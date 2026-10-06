@@ -234,7 +234,7 @@
       ③ <b>瞄準線</b>（實線）＝由白球指向假想球圈心，即係白球要走嘅方向。<br>
       ④ 兩條線喺假想球圈心相交，中間嗰個<b>夾角就係切角</b>（畫面嘅扇形＋度數）。<br>
       <br>
-      <b>參考線（超透明）</b>：中心十字線 ＋ 6 個色球原位小圈，方便你估距離同位置；兩條路徑中點寫住「x.x 球身」＝實際距離（1 球身 = 一個球直徑）。<br>
+      <b>參考線（超透明）</b>：檯面均分成 <b>24 格</b>（長邊 6 格 × 短邊 4 格，每格 <b>23.4″ × 17.5″</b>，24 格一樣大）嘅虛線格網，用來數格估距離同位置；中間兩條中心線稍為亮一點（穿過啡／藍／粉／黑原位）。另加 6 個色球原位小圈；兩條路徑中點寫住「x.x 球身」＝實際距離（1 球身 = 一個球直徑）。<br>
       <b>色球定位</b>：黃(2)／綠(3)／啡(4)／藍(5)／粉紅(6)／黑(7) 一開始就擺喺原位（半透明，唔會擋住瞄準線）。<br>
       <br>
       <b>厚度 = 1 − sin（切角）</b>：切角 30° 就係半球（蓋住目標球 50%）。畫面上白色空心圈嘅<b>瞄準點</b>，距目標球球心 = 半徑 × sin（切角），所以可以直接對照下表。<br>
@@ -347,6 +347,23 @@ function snookerSpots(){
 /* 吋 → 幾個球身（球直徑為單位） */
 function ballWidths(inch){ return inch / (2 * R_BALL); }
 
+/* 檯面均分格線：GRID_COLS × GRID_ROWS = 6 × 4 = 24 格，24 格全部一樣大。
+   用途：唔靠感覺，直接數格估距離／位置。
+   長邊 140.5 ÷ 6 = 23.417″、短邊 70 ÷ 4 = 17.5″。
+   6 同 4 都係偶數 → 兩條中心線（x=70.25、y=35）啱啱好係格線，原本嘅十字參考得以保留。 */
+var GRID_COLS = 6, GRID_ROWS = 4;
+function tableGrid(cols, rows){
+  var c = cols || GRID_COLS, r = rows || GRID_ROWS, i;
+  var v = [], h = [];
+  for (i = 1; i < c; i++) v.push(i * TBL.w / c);   // 內部直格線（x 座標，吋）
+  for (i = 1; i < r; i++) h.push(i * TBL.h / r);   // 內部橫格線（y 座標，吋）
+  return {
+    cols: c, rows: r, cells: c * r,
+    cw: TBL.w / c, ch: TBL.h / r,                  // 每格寬 / 高（吋）
+    v: v, h: h
+  };
+}
+
 /* 依可用寬高算出畫布寬度（高度不足時自動縮窄，確保整張枱睇得到） */
 function fitWidth(availW, availH, logicalW, logicalH){
   var w = Math.floor(Math.min(availW, availH * logicalW / logicalH));
@@ -440,7 +457,8 @@ var SNK = {
   clothOut: '#0a5530',
   pocket:   '#0b1a12',
   mark:     'rgba(240,245,235,0.20)',
-  guide:    'rgba(240,245,235,0.11)',
+  guide:    'rgba(240,245,235,0.15)',
+  guide2:   'rgba(240,245,235,0.26)',
   ivory:    '#f6f3e8',
   chip:     'rgba(6,26,16,0.78)'
 };
@@ -589,9 +607,15 @@ function render(){
   ctx.stroke();
   ctx.setLineDash([]);
 
-  /* ── 延伸參考線（超透明）：中心十字 + 各色球原位小圈 ── */
+  /* ── 參考線（超透明）：檯面均分 24 格（長邊 6 × 短邊 4）＋ 各色球原位小圈 ── */
   if (opts.guide){
+    var grd = tableGrid(), gvi, ghj;
     set(Math.max(1, 1 * S), SNK.guide, [9 * S, 8 * S]);
+    for (gvi = 0; gvi < grd.v.length; gvi++) line(X(grd.v[gvi]), Y(0), X(grd.v[gvi]), Y(TBL.h));
+    for (ghj = 0; ghj < grd.h.length; ghj++) line(X(0), Y(grd.h[ghj]), X(TBL.w), Y(grd.h[ghj]));
+    ctx.setLineDash([]);
+    // 兩條中心線（穿過所有色球原位）稍為亮一點，保留原本嘅十字參考
+    set(Math.max(1, 1 * S), SNK.guide2, [9 * S, 8 * S]);
     line(X(0), Y(MY), X(TBL.w), Y(MY));       // 縱向中心線（穿過啡、藍、粉、黑）
     line(X(MX), Y(0), X(MX), Y(TBL.h));       // 橫向中心線（過藍球）
     ctx.setLineDash([]);
@@ -1044,7 +1068,9 @@ function pev(type, c){
 }
 function selftest(){
   var out = [];
-  var ok = function(name, cond){ out.push(name + '=' + (cond ? 'OK' : 'FAIL')); };
+  var ok = function(name, cond, extra){
+    out.push(name + '=' + (cond ? 'OK' : 'FAIL') + (extra !== undefined ? ' [' + extra + ']' : ''));
+  };
   var r = cv.getBoundingClientRect();
   ok('canvas', r.width > 120 && cv.width > 0);
 
@@ -1096,6 +1122,12 @@ function selftest(){
      return s.x >= R_BALL && s.x <= TBL.w - R_BALL && s.y >= R_BALL && s.y <= TBL.h - R_BALL; }));
   ok('guideSpotsOn', opts.guide === true && opts.spots === true);
   ok('togglesExist', !!document.getElementById('bGuide') && !!document.getElementById('bSpots'));
+  // 24 格均分格網：6 × 4、全部一樣大、格線數 5 直 3 橫
+  var grd = tableGrid();
+  ok('grid24', grd.cells === 24 && grd.cols === 6 && grd.rows === 4 &&
+     grd.v.length === 5 && grd.h.length === 3 &&
+     Math.abs(grd.v[grd.v.length - 1] + grd.cw - TBL.w) < 1e-12 &&
+     Math.abs(grd.h[grd.h.length - 1] + grd.ch - TBL.h) < 1e-12);
   // iOS 安裝提示：非 iOS 裝置唔應該顯示（否則會白佔一行）
   var tipEl = document.getElementById('iosTip');
   ok('iosTipHiddenOffIOS', !!tipEl && getComputedStyle(tipEl).display === 'none' &&
@@ -1108,6 +1140,82 @@ function selftest(){
   var docH = document.documentElement.scrollHeight;
   ok('wholeTableFits', docH <= window.innerHeight + 2 && cv.getBoundingClientRect().bottom <= window.innerHeight + 1,
      'doc=' + docH + ' vh=' + window.innerHeight + ' canvasBottom=' + Math.round(cv.getBoundingClientRect().bottom));
+
+  // ── 用畫布像素證明「24 格格網真係畫咗出嚟」（唔只係計得對）──
+  // 做法：暫時關掉所有輔助線、兩球讓去角落，令畫面只剩下格網；
+  //       每個取樣點同「同一行、偏離 3 吋嘅布底色」相減 → 抵銷絨布漸變，
+  //       有格線嘅位置就會明顯較亮（格中心則無）。
+  var keepO = {}, kk;
+  for (kk in opts) keepO[kk] = opts[kk];
+  var keepCue = { x: cue.x, y: cue.y }, keepObj = { x: obj.x, y: obj.y };
+  for (kk in opts) opts[kk] = false;
+  opts.guide = true;                                   // 只留格網
+  cue.x = 139.4; cue.y = 1.1; obj.x = 2; obj.y = 68;   // 兩球讓去角落，唔阻量度
+  function pixSum(tx, ty){
+    var d = ctx.getImageData(Math.round(X(tx) * dpr), Math.round(Y(ty) * dpr), 1, 1).data;
+    return d[0] + d[1] + d[2];
+  }
+  // 跳過「唔係本次要量嘅」位置：另一方向嘅格線相交點、同色球原位小圈
+  var gA = tableGrid(), gSpots = snookerSpots();
+  function skipPoint(tx, ty, vertical){
+    var i, perp = vertical ? gA.h : gA.v, cross = vertical ? ty : tx;
+    for (i = 0; i < perp.length; i++) if (Math.abs(cross - perp[i]) < 1.6) return true;
+    for (i = 0; i < gSpots.length; i++)
+      if (Math.abs(tx - gSpots[i].x) < 4 && Math.abs(ty - gSpots[i].y) < 4) return true;
+    return false;
+  }
+  // 某一點嘅「亮度 − 同行偏離 3 吋嘅布底色」＝該點有無線；回傳一整條取樣序列
+  function prof(fixed, from, to, step, vertical){
+    var a = [], v;
+    for (v = from; v <= to; v += step){
+      if (skipPoint(vertical ? fixed : v, vertical ? v : fixed, vertical)) continue;
+      a.push(vertical ? pixSum(fixed, v) - pixSum(fixed + 3, v)
+                      : pixSum(v, fixed) - pixSum(v, fixed + 3));
+    }
+    return a;
+  }
+  function gridProbe(){
+    var o = { vL: [], vC: [], hL: [], hC: [] }, i;
+    for (i = 0; i < gA.v.length; i++) o.vL.push(prof(gA.v[i], 3, 67, 0.25, true));
+    for (i = 0; i < 6; i++)           o.vC.push(prof((i + 0.5) * gA.cw, 3, 67, 0.25, true));
+    for (i = 0; i < gA.h.length; i++) o.hL.push(prof(gA.h[i], 3, 137, 0.5, false));
+    for (i = 0; i < 4; i++)           o.hC.push(prof((i + 0.5) * gA.ch, 3, 137, 0.5, false));
+    return o;
+  }
+  // 差分法：格網「開」同「關」各畫一次再相減 → 絨布、D、baulk 線、袋口、球全部抵銷，
+  // 剩返嘅就係格網本身嘅貢獻，所以格中心應該完全係 0。
+  render();                          var probeOn  = gridProbe();
+  opts.guide = false; render();      var probeOff = gridProbe();
+  opts.guide = true;  render();
+  function stat(onA, offA){
+    return onA.map(function(a, i){
+      var b = offA[i], n = 0, sum = 0, j, d;
+      for (j = 0; j < a.length; j++){ d = a[j] - b[j]; if (d > 20){ n++; sum += d; } }
+      return { n: n, total: a.length, frac: a.length ? n / a.length : 0, mean: n ? sum / n : 0 };
+    });
+  }
+  var vL = stat(probeOn.vL, probeOff.vL), vC = stat(probeOn.vC, probeOff.vC);
+  var hL = stat(probeOn.hL, probeOff.hL), hC = stat(probeOn.hC, probeOff.hC);
+  var ns = function(a){ return a.map(function(p){ return p.n; }); };
+  var meanTxt = function(a){ return a.map(function(p){ return p.mean.toFixed(0); }).join('/'); };
+  // 格線：整條線有大約一半取樣點「有線」（虛線 9 亮 8 暗 → 約 53%）
+  var mnv = Math.min.apply(null, vL.map(function(p){ return p.frac; }));
+  var mnh = Math.min.apply(null, hL.map(function(p){ return p.frac; }));
+  // 格中心：唔應該有線（殘值只可能來自其他元素嘅抗鋸齒邊緣）
+  var mxv = Math.max.apply(null, vC.map(function(p){ return p.frac; }));
+  var mxh = Math.max.apply(null, hC.map(function(p){ return p.frac; }));
+  var pct = function(a){ return a.map(function(p){ return (p.frac * 100).toFixed(1) + '%'; }).join('/'); };
+  ok('gridPixelV（5 條直格線都畫到，格中心無線）', mnv > 0.30 && mxv < 0.08 && mnv > 3 * mxv,
+     '格線有線比例 ' + pct(vL) + '　格中心 ' + pct(vC) + '　平均對比 ' + meanTxt(vL));
+  ok('gridPixelH（3 條橫格線都畫到，格中心無線）', mnh > 0.30 && mxh < 0.08 && mnh > 3 * mxh,
+     '格線有線比例 ' + pct(hL) + '　格中心 ' + pct(hC) + '　平均對比 ' + meanTxt(hL));
+  var otherMean = Math.max(vL[0].mean, vL[1].mean, vL[3].mean, vL[4].mean);
+  ok('gridCenterBrighter（穿過色球原位嘅中心線明顯較亮）',
+     vL[2].mean > otherMean + 20,
+     '中心線平均對比 ' + vL[2].mean.toFixed(0) + '　普通格線 ' + otherMean.toFixed(0));
+  for (kk in opts) opts[kk] = keepO[kk];               // 還原
+  cue.x = keepCue.x; cue.y = keepCue.y; obj.x = keepObj.x; obj.y = keepObj.y;
+  render();
 
   var line = 'SELFTEST ' + out.join(' ') + ' [' + angSeen.join(' ') + '] ' +
     ' canvas=' + Math.round(r.width) + 'x' + Math.round(r.height) + ' S=' + S.toFixed(4) +

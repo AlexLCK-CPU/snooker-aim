@@ -1,6 +1,6 @@
 /* 桌球角度瞄準練習 — 離線快取（App Shell）。
    加到主畫面後，就算冇網絡都開得返。改版時把 VERSION 加一就會更新。 */
-var VERSION = 'billiards-aim-v2';
+var VERSION = 'billiards-aim-v3';
 var FILES = [
   './index.html',
   './site.webmanifest',
