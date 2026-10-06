@@ -1,0 +1,17 @@
+{
+  "name": "桌球角度瞄準練習",
+  "short_name": "桌球瞄準",
+  "description": "拖曳白球與目標球，即時顯示切角、擊球厚度與瞄準點。",
+  "lang": "zh-Hant",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0a2c1b",
+  "theme_color": "#0d5c33",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

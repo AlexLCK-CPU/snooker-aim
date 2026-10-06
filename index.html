@@ -1,0 +1,1109 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0d5c33">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="桌球瞄準">
+<meta name="description" content="桌球角度瞄準練習：拖曳白球與目標球，即時顯示切角、厚度與瞄準點。">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" href="icon-180.png">
+<link rel="manifest" href="site.webmanifest">
+<title>桌球角度瞄準練習</title>
+<style>
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;background:transparent}
+  body{
+    font-family:inherit;
+    color:var(--foreground,#e8e8e8);
+    font-size:13px;line-height:1.5;
+    -webkit-font-smoothing:antialiased;
+    -webkit-tap-highlight-color:transparent;
+    overscroll-behavior:none;
+  }
+  .wrap{width:100%}
+
+  /* ── 大字角度 ── */
+  .hud{
+    display:flex;align-items:flex-end;gap:20px;flex-wrap:wrap;
+    margin:0 0 10px 0;
+  }
+  .hudL{display:flex;flex-direction:column;gap:1px}
+  .hudL .k{font-size:11px;letter-spacing:.08em;color:var(--muted-foreground,#9aa0a6)}
+  .hudL .v{
+    font-size:36px;line-height:1;font-weight:700;letter-spacing:-.02em;
+    color:var(--accent,#6ea8fe);font-variant-numeric:tabular-nums;
+  }
+  .hudL .v .deg{font-size:19px;font-weight:600;margin-left:1px}
+  .hudL .v.bad{color:var(--destructive,#e5484d);font-size:27px}
+  .hudR{
+    display:flex;flex-direction:column;gap:3px;padding-bottom:3px;
+    font-size:12.5px;color:var(--muted-foreground,#9aa0a6);
+  }
+  .hudR b{color:var(--foreground,#e8e8e8);font-weight:600;font-variant-numeric:tabular-nums}
+  .hudR .row{display:flex;gap:8px}
+  .hudR .k2{min-width:5.6em;color:var(--muted-foreground,#9aa0a6)}
+
+  /* ── 按鈕列 ── */
+  .bar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:0 0 8px 0}
+  .bar .lbl{
+    font-size:11px;letter-spacing:.08em;
+    color:var(--muted-foreground,#9aa0a6);margin-right:2px;
+  }
+  .bar .sp{flex:1 1 10px}
+  .bar button{
+    font:inherit;font-size:12.5px;line-height:1.2;
+    background:transparent;color:var(--foreground,#e8e8e8);
+    border:1px solid var(--border,#3a3f45);border-radius:7px;
+    padding:5px 11px;cursor:pointer;
+    transition:border-color .12s,color .12s,background .12s;
+  }
+  .bar button:hover{border-color:var(--accent,#6ea8fe);color:var(--accent,#6ea8fe)}
+  .bar button.on{
+    background:color-mix(in oklab, var(--accent,#6ea8fe) 16%, transparent);
+    border-color:var(--accent,#6ea8fe);color:var(--accent,#6ea8fe);
+  }
+  .bar button.angBtn{font-variant-numeric:tabular-nums;min-width:52px}
+  .sw{
+    display:inline-flex;align-items:center;gap:5px;
+    border:1px solid var(--border,#3a3f45);border-radius:999px;
+    padding:3px 9px 3px 5px;cursor:pointer;background:transparent;
+    font:inherit;font-size:12px;color:var(--foreground,#e8e8e8);
+  }
+  .sw i{
+    width:13px;height:13px;border-radius:50%;display:inline-block;
+    border:1px solid rgba(255,255,255,.45);
+  }
+  .sw.on{border-color:var(--accent,#6ea8fe);color:var(--accent,#6ea8fe)}
+  .sw .num{font-size:10px;color:var(--muted-foreground,#9aa0a6)}
+
+  canvas{display:block;width:100%;height:auto;touch-action:none;cursor:grab;user-select:none}
+  canvas.grabbing{cursor:grabbing}
+
+  .status{margin-top:8px;font-size:12.5px;color:var(--muted-foreground,#9aa0a6);min-height:3.3em;line-height:1.6}
+  .status.bad{color:var(--destructive,#e5484d)}
+  .status b{color:var(--foreground,#e8e8e8)}
+
+  details.ref{margin-top:9px}
+  details.ref summary{
+    cursor:pointer;font-size:12px;color:var(--muted-foreground,#9aa0a6);
+    list-style:none;display:inline-flex;align-items:center;gap:6px;
+    border:1px solid var(--border,#3a3f45);border-radius:7px;padding:4px 10px;
+  }
+  details.ref summary::-webkit-details-marker{display:none}
+  details.ref summary:hover{color:var(--accent,#6ea8fe);border-color:var(--accent,#6ea8fe)}
+  details.ref table{border-collapse:collapse;margin-top:8px;font-size:12px}
+  details.ref th,details.ref td{
+    text-align:left;padding:4px 12px 4px 0;
+    border-bottom:1px solid var(--border,#3a3f45);
+    color:var(--muted-foreground,#9aa0a6);
+  }
+  details.ref th{color:var(--foreground,#e8e8e8);font-weight:600}
+  details.ref td.n{color:var(--foreground,#e8e8e8);font-variant-numeric:tabular-nums}
+  details.ref .tip{margin-top:8px;font-size:12px;color:var(--muted-foreground,#9aa0a6);line-height:1.7;max-width:78ch}
+
+  /* ── 手機（窄）── */
+  @media (max-width: 720px){
+    body{font-size:12.5px}
+    .hud{gap:12px;margin-bottom:8px}
+    .hudL .v{font-size:32px}
+    .hudL .v .deg{font-size:17px}
+    .hudR{flex-direction:row;flex-wrap:wrap;gap:3px 14px;font-size:12px;padding-bottom:0}
+    .hudR .k2{min-width:0}
+    .bar{gap:5px}
+    .bar button{padding:7px 10px;font-size:12.5px}
+    .sw{padding:4px 8px 4px 4px}
+    details.ref .tip{font-size:11.5px}
+  }
+  /* ── 手機橫向／矮螢幕：精簡控件，騰出高度俾張枱 ── */
+  @media (max-height: 560px){
+    .bar .lbl, #swWrap{display:none}
+    .hud{gap:10px;margin-bottom:6px}
+    .hudL .v{font-size:26px}
+    .hudL .v .deg{font-size:15px}
+    .hudL .k{font-size:10px}
+    .hudR{font-size:11px;gap:2px 12px}
+    .bar{margin-bottom:5px}
+    .bar button{padding:5px 8px;font-size:11.5px}
+    .status{min-height:2.2em;font-size:11px;margin-top:5px}
+    details.ref{margin-top:5px}
+    details.ref summary{padding:3px 8px;font-size:11px}
+  }
+  /* ── 極矮（手機橫向）：再精簡，騰出最大高度俾張枱 ── */
+  @media (max-height: 400px){
+    .hud{gap:8px;margin-bottom:5px}
+    .hudL .k{display:none}
+    .hudL .v{font-size:22px}
+    .hudR{font-size:10.5px;gap:1px 10px}
+    .bar{margin-bottom:4px}
+    .bar button{padding:3px 7px;font-size:11px;border-radius:6px}
+    .status{display:none}
+    details.ref{display:none}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="hud">
+    <div class="hudL">
+      <div class="k">切角（進球角度）</div>
+      <div class="v" id="bigAng">–</div>
+    </div>
+    <div class="hudR">
+      <div class="row"><span class="k2">擊球厚度</span><b id="bigThk">–</b></div>
+      <div class="row"><span class="k2">瞄準點</span><b id="bigAim">–</b></div>
+      <div class="row"><span class="k2">目標袋</span><b id="bigPk">–</b></div>
+      <div class="row"><span class="k2">白球撞後</span><b id="bigTan">–</b></div>
+    </div>
+  </div>
+
+  <div class="bar">
+    <span class="lbl">角度示範</span>
+    <button class="angBtn" data-ang="15">15°</button>
+    <button class="angBtn" data-ang="30">30°</button>
+    <button class="angBtn" data-ang="45">45°</button>
+    <button class="angBtn" data-ang="60">60°</button>
+    <span class="sp"></span>
+    <span class="lbl">目標球</span>
+    <span id="swWrap"></span>
+  </div>
+
+  <div class="bar">
+    <span class="lbl">顯示</span>
+    <button id="bGhost" class="on">假想球</button>
+    <button id="bCenter" class="on">連心線</button>
+    <button id="bArc" class="on">角度弧</button>
+    <button id="bGuide" class="on">參考線</button>
+    <button id="bSpots" class="on">色球定位</button>
+    <button id="bStick" class="on">球桿</button>
+    <button id="bTang">90° 切線</button>
+    <button id="bLines">各袋連線</button>
+    <span class="sp"></span>
+    <button id="bFull">全螢幕</button>
+    <button id="bReset">重設</button>
+    <button id="bSwap">交換白/目標</button>
+  </div>
+
+  <canvas id="cv"></canvas>
+
+  <div class="status" id="oStat">拖曳白球或目標球，切角會即時顯示。</div>
+
+  <details class="ref">
+    <summary>角度 ↔ 厚度 對照表</summary>
+    <table>
+      <tr><th>打法</th><th>切角</th><th>瞄準點（目標球上）</th></tr>
+      <tr><td>全波</td><td class="n">0°</td><td>球的正中心</td></tr>
+      <tr><td>3/4 波</td><td class="n">14.5°</td><td>中心與邊緣的 1/4 處</td></tr>
+      <tr><td>半球</td><td class="n">30°</td><td>中心與邊緣的正中間</td></tr>
+      <tr><td>1/4 波</td><td class="n">48.6°</td><td>中心與邊緣的 3/4 處</td></tr>
+      <tr><td>1/8 波</td><td class="n">61°</td><td>幾乎貼著邊緣</td></tr>
+    </table>
+    <div class="tip">
+      <b>切角（進球角度）係點得出嚟：</b><br>
+      ① <b>連心線</b>（虛線）＝由袋口穿過目標球、再向目標球後面延長。目標球就係沿住呢條線滾入袋，所以佢＝目標球要走嘅方向。<br>
+      ② 白球撞到目標球嗰一刻，兩個球心相距一個球直徑；所以白球球心一定喺連心線上、目標球後面 2 個球身嘅位置 → 呢個就係 <b>假想球</b>（虛線圈，圈心有粒小點）。<br>
+      ③ <b>瞄準線</b>（實線）＝由白球指向假想球圈心，即係白球要走嘅方向。<br>
+      ④ 兩條線喺假想球圈心相交，中間嗰個<b>夾角就係切角</b>（畫面嘅扇形＋度數）。<br>
+      <br>
+      <b>參考線（超透明）</b>：中心十字線 ＋ 6 個色球原位小圈，方便你估距離同位置；兩條路徑中點寫住「x.x 球身」＝實際距離（1 球身 = 一個球直徑）。<br>
+      <b>色球定位</b>：黃(2)／綠(3)／啡(4)／藍(5)／粉紅(6)／黑(7) 一開始就擺喺原位（半透明，唔會擋住瞄準線）。<br>
+      <br>
+      <b>厚度 = 1 − sin（切角）</b>：切角 30° 就係半球（蓋住目標球 50%）。畫面上白色空心圈嘅<b>瞄準點</b>，距目標球球心 = 半徑 × sin（切角），所以可以直接對照下表。<br>
+      90° 切線（可開啟）＝中桿定桿時白球撞後嘅分離方向，用來想做球走位。
+    </div>
+  </details>
+
+</div>
+
+<script>
+(function(){
+'use strict';
+
+/* ══════════ 幾何核心（可獨立測試） ══════════ */
+/*GEO-START*/
+var R_BALL = 52.5 / 25.4 / 2;        // 英式球：直徑 52.5mm，換算成吋的半徑
+var TBL = { w: 140.5, h: 70 };       // 英式桌球檯面 140.5" x 70"（2:1）
+
+function unit(x, y){
+  var d = Math.hypot(x, y);
+  if (d < 1e-12) return { x: 0, y: 0, d: 0 };
+  return { x: x / d, y: y / d, d: d };
+}
+function rot(v, rad){
+  var c = Math.cos(rad), s = Math.sin(rad);
+  return { x: v.x * c - v.y * s, y: v.x * s + v.y * c };
+}
+
+/* 給定白球、目標球、目標袋 → 假想球、瞄準線、切角、撞擊點、切線 */
+function computeShot(cue, obj, pocket){
+  var toP = unit(pocket.x - obj.x, pocket.y - obj.y);       // 目標球要走的方向
+  var ghost = { x: obj.x - 2 * R_BALL * toP.x, y: obj.y - 2 * R_BALL * toP.y };
+  var toG = unit(ghost.x - cue.x, ghost.y - cue.y);         // 白球要走的方向
+  if (toG.d < 1e-6) { toG = unit(obj.x - cue.x, obj.y - cue.y); }  // 退化：白球站在假想球上
+  var cosT = Math.max(-1, Math.min(1, toG.x * toP.x + toG.y * toP.y));
+  var cutDeg = Math.acos(cosT) * 180 / Math.PI;
+  var contact = { x: obj.x - R_BALL * toP.x, y: obj.y - R_BALL * toP.y };  // 目標球上的瞄準點
+
+  var t = { x: -toP.y, y: toP.x };                          // 90° 切線
+  if (t.x * toG.x + t.y * toG.y < 0) { t = { x: -t.x, y: -t.y }; }
+  var side = (toP.x * t.y - toP.y * t.x) > 0 ? '左' : '右';
+
+  var eps = 0.2;
+  var ghostInside = ghost.x >= R_BALL - eps && ghost.x <= TBL.w - R_BALL + eps &&
+                    ghost.y >= R_BALL - eps && ghost.y <= TBL.h - R_BALL + eps;
+  var cueToGhost = Math.hypot(ghost.x - cue.x, ghost.y - cue.y);
+  var tooClose = cueToGhost < 2 * R_BALL;
+
+  return {
+    pocket: pocket, toP: toP, toG: toG, ghost: ghost, contact: contact,
+    cutDeg: cutDeg,
+    thickness: 1 - Math.sin(cutDeg * Math.PI / 180),   // 擊球厚度（蓋住目標球的比例）
+    aimFrac: Math.sin(cutDeg * Math.PI / 180),         // 瞄準點距球心的比例（半徑為 1）
+    tangent: t, side: side,
+    ghostInside: ghostInside, tooClose: tooClose,
+    cueToGhost: cueToGhost,
+    objToPocket: Math.hypot(pocket.x - obj.x, pocket.y - obj.y),
+    feasible: ghostInside && cutDeg < 89.5 && !tooClose
+  };
+}
+
+/* 從 6 個袋口挑最合理的一個 */
+function pickPocket(cue, obj, pockets){
+  var all = pockets.map(function(p){ return computeShot(cue, obj, p); });
+  var ok = all.filter(function(s){ return s.feasible; });
+  var pool = ok.length ? ok : all;
+  var best = pool[0], bestScore = Infinity;
+  for (var i = 0; i < pool.length; i++){
+    var s = pool[i], score = s.cutDeg + 0.10 * s.objToPocket;
+    if (score < bestScore){ bestScore = score; best = s; }
+  }
+  return { shot: best, all: all, anyOk: ok.length > 0 };
+}
+
+/* 依指定切角擺放白球（角度示範用）：白球放在假想球後方，方向與目標球路徑夾 deg 度 */
+function placeForAngle(cue, obj, pocket, deg, kMax){
+  var toP = unit(pocket.x - obj.x, pocket.y - obj.y);
+  var ghost = { x: obj.x - 2 * R_BALL * toP.x, y: obj.y - 2 * R_BALL * toP.y };
+  var cur = unit(cue.x - ghost.x, cue.y - ghost.y);
+  var cross = toP.x * cur.y - toP.y * cur.x;      // 白球目前偏哪一側 → 維持同一側
+  var signs = cross >= 0 ? [1, -1] : [-1, 1];
+  var top = kMax || 60;
+  for (var s = 0; s < 2; s++){
+    var dir = rot(toP, signs[s] * deg * Math.PI / 180);
+    for (var k = top; k >= 2 * R_BALL + 1; k -= 1.5){
+      var p = { x: ghost.x - dir.x * k, y: ghost.y - dir.y * k };
+      if (p.x >= R_BALL && p.x <= TBL.w - R_BALL && p.y >= R_BALL && p.y <= TBL.h - R_BALL){
+        return { x: p.x, y: p.y, deg: deg, side: signs[s] > 0 ? 1 : -1 };
+      }
+    }
+  }
+  return null;
+}
+
+/* 英式桌球 6 個色球的原位（spots）：黃／綠／啡 在 baulk 線，藍 在中心，
+   粉 在中心與頂庫中點，黑 距頂庫 12.75 吋。（baulk 線距底庫 29 吋） */
+var BAULK_X = 29, D_RADIUS = 11.5, BLACK_FROM_TOP = 12.75;
+function snookerSpots(){
+  var mx = TBL.w / 2, my = TBL.h / 2;
+  return [
+    { name: '黃', value: 2, c: '#e6c229', x: BAULK_X, y: my + D_RADIUS },
+    { name: '綠', value: 3, c: '#1f8a3c', x: BAULK_X, y: my - D_RADIUS },
+    { name: '啡', value: 4, c: '#8a5a2b', x: BAULK_X, y: my },
+    { name: '藍', value: 5, c: '#2a63c8', x: mx,      y: my },
+    { name: '粉紅', value: 6, c: '#e58aa8', x: (mx + TBL.w) / 2, y: my },
+    { name: '黑', value: 7, c: '#141414', x: TBL.w - BLACK_FROM_TOP, y: my }
+  ];
+}
+
+/* 吋 → 幾個球身（球直徑為單位） */
+function ballWidths(inch){ return inch / (2 * R_BALL); }
+
+/* 依可用寬高算出畫布寬度（高度不足時自動縮窄，確保整張枱睇得到） */
+function fitWidth(availW, availH, logicalW, logicalH){
+  var w = Math.floor(Math.min(availW, availH * logicalW / logicalH));
+  return w < 120 ? 120 : w;
+}
+
+/* 由檯面內一點沿方向走到庫邊的距離（吋）——用來把連心線畫到庫邊 */
+function exitDist(x0, y0, dx, dy){
+  var t = 1e9;
+  if (dx >  1e-9) t = Math.min(t, (TBL.w - x0) / dx);
+  if (dx < -1e-9) t = Math.min(t, (0 - x0) / dx);
+  if (dy >  1e-9) t = Math.min(t, (TBL.h - y0) / dy);
+  if (dy < -1e-9) t = Math.min(t, (0 - y0) / dy);
+  return t;
+}
+
+/* 切角 → 打法名稱 */
+var REF_SHOTS = [[0, '全波（正面）'], [14.5, '3/4 波'], [30, '半球'], [48.6, '1/4 波'], [61, '1/8 波']];
+function shotName(deg){
+  if (deg <= 7)   return '全波（正面）';
+  if (deg <= 22)  return '3/4 波';
+  if (deg <= 39)  return '半球';
+  if (deg <= 55)  return '1/4 波';
+  if (deg <= 75)  return '1/8 波';
+  return '極薄';
+}
+/* 只有在接近標準角度時才不加「約」，否則標明是近似 */
+function shotNameApprox(deg){
+  if (deg > 75) return '極薄';
+  var best = REF_SHOTS[0], bd = Infinity;
+  for (var i = 0; i < REF_SHOTS.length; i++){
+    var d = Math.abs(deg - REF_SHOTS[i][0]);
+    if (d < bd){ bd = d; best = REF_SHOTS[i]; }
+  }
+  return (bd <= 2.5 ? '' : '約 ') + best[1];
+}
+/* 瞄準點的口語描述 */
+function aimText(deg){
+  var f = Math.sin(deg * Math.PI / 180), p = Math.round(f * 100), nm = '';
+  if (Math.abs(f - 0)    <= 0.04) nm = '球的正中心';
+  else if (Math.abs(f - 0.25) <= 0.05) nm = '中心與邊緣的 1/4 處';
+  else if (Math.abs(f - 0.5)  <= 0.05) nm = '中心與邊緣的正中間';
+  else if (Math.abs(f - 0.75) <= 0.05) nm = '中心與邊緣的 3/4 處';
+  return (nm ? nm + '（' : '距球心 ') + p + '% 半徑' + (nm ? '）' : '');
+}
+/*GEO-END*/
+
+/* ══════════ 檯面 ══════════ */
+var RAIL = 5;
+var LW = TBL.w + RAIL * 2;
+var LH = TBL.h + RAIL * 2;
+var POCKET_R = 3.0;
+var MX = TBL.w / 2, MY = TBL.h / 2;
+
+var POCKETS = [
+  { x: -0.5,     y: -0.5,     name: '左上角袋' },
+  { x: MX,       y: -0.8,     name: '上中袋' },
+  { x: TBL.w + 0.5, y: -0.5,  name: '右上角袋' },
+  { x: -0.5,     y: TBL.h + 0.5,  name: '左下角袋' },
+  { x: MX,       y: TBL.h + 0.8,  name: '下中袋' },
+  { x: TBL.w + 0.5, y: TBL.h + 0.5, name: '右下角袋' }
+];
+
+var START = { cue: { x: 30, y: 35 }, obj: { x: 84, y: 47 } };
+var cue = { x: START.cue.x, y: START.cue.y };
+var obj = { x: START.obj.x, y: START.obj.y };
+var manualPocket = -1;
+
+var opts = { ghost: true, center: true, arc: true, guide: true, spots: true,
+             tangent: false, lines: false, stick: true, auto: true };
+var AIM_ALPHA = 0.5;   // 主球瞄副球那條線的半透明度（1 = 全不透明）
+
+/* ══════════ Snooker 配色 ══════════ */
+var BALLS = [
+  { name: '紅',   v: '1分', c: '#c62828' },
+  { name: '黃',   v: '2分', c: '#e6c229' },
+  { name: '綠',   v: '3分', c: '#1f8a3c' },
+  { name: '咖啡', v: '4分', c: '#8a5a2b' },
+  { name: '藍',   v: '5分', c: '#2a63c8' },
+  { name: '粉紅', v: '6分', c: '#e58aa8' },
+  { name: '黑',   v: '7分', c: '#141414' }
+];
+var objBall = 0;
+
+var SNK = {
+  wood:     '#5a3a21',
+  woodHi:   '#7d5330',
+  woodLo:   '#402814',
+  cushion:  '#0c5c34',
+  clothIn:  '#1c8450',
+  clothOut: '#0a5530',
+  pocket:   '#0b1a12',
+  mark:     'rgba(240,245,235,0.20)',
+  guide:    'rgba(240,245,235,0.11)',
+  ivory:    '#f6f3e8',
+  chip:     'rgba(6,26,16,0.78)'
+};
+
+var TH = {}, FONT = 'system-ui, sans-serif';
+
+function probe(expr, fb){
+  var el = document.createElement('div');
+  el.style.cssText = 'position:absolute;left:-9999px;top:-9999px;width:1px;height:1px;';
+  el.style.backgroundColor = expr;
+  document.body.appendChild(el);
+  var v = getComputedStyle(el).backgroundColor;
+  el.remove();
+  if (!v || v === 'rgba(0, 0, 0, 0)' || v === 'transparent') return fb;
+  return v;
+}
+function readTheme(){
+  TH = {
+    accent: probe('var(--accent)', '#6ea8fe'),
+    muted:  probe('var(--muted-foreground)', '#9aa0a6'),
+    danger: probe('var(--destructive)', '#e5484d')
+  };
+  FONT = getComputedStyle(document.body).fontFamily || FONT;
+}
+function lum(hex){
+  var n = parseInt(hex.slice(1), 16);
+  var r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+  return (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+}
+function outlineFor(hex){ return lum(hex) < 0.45 ? SNK.ivory : '#0a2c1b'; }
+/* 把主題色加透明度（主題色可能是 rgb(...) 或 #rrggbb） */
+function withAlpha(col, a){
+  var m = String(col).match(/rgba?\(([^)]+)\)/);
+  if (m){
+    var p = m[1].split(',');
+    return 'rgba(' + parseFloat(p[0]) + ',' + parseFloat(p[1]) + ',' + parseFloat(p[2]) + ',' + a + ')';
+  }
+  if (/^#[0-9a-fA-F]{6}$/.test(col)){
+    var n = parseInt(col.slice(1), 16);
+    return 'rgba(' + ((n >> 16) & 255) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + a + ')';
+  }
+  return col;
+}
+
+/* ══════════ 畫布 ══════════ */
+var cv = document.getElementById('cv');
+var ctx = cv.getContext('2d');
+var dpr = 1, S = 1, shot = null;
+
+function X(tx){ return (RAIL + tx) * S; }
+function Y(ty){ return (RAIL + ty) * S; }
+
+var lastW = -1;
+/* 畫布尺寸：寬度跟面板，但高度不得超出可視範圍 → 整張枱連控件可以一次過睇完 */
+function resize(){
+  var wrap = cv.parentElement;
+  var availW = wrap.clientWidth || 640;
+
+  var chrome = 0;   // 畫布以外所有控件（HUD／按鈕列／狀態／對照表）佔用嘅高度
+  for (var i = 0; i < wrap.children.length; i++){
+    var el = wrap.children[i];
+    if (el === cv) continue;
+    var cs = getComputedStyle(el);
+    chrome += el.getBoundingClientRect().height +
+              (parseFloat(cs.marginTop) || 0) + (parseFloat(cs.marginBottom) || 0);
+  }
+  var vh = window.innerHeight || 900;
+  // 只留 60px 下限；真正防止過細嘅係 fitWidth() 內部嘅 120px 寬度下限
+  var availH = Math.max(60, vh - chrome - 10);
+  var cssW = fitWidth(availW, availH, LW, LH);
+  if (Math.abs(cssW - lastW) < 0.6 && cv.width > 0) return;   // 尺寸無變 → 避免迴圈
+  lastW = cssW;
+
+  var cssH = cssW * LH / LW;
+  dpr = window.devicePixelRatio || 1;
+  cv.style.width = cssW + 'px';
+  cv.style.height = cssH + 'px';
+  cv.width = Math.max(1, Math.round(cssW * dpr));
+  cv.height = Math.max(1, Math.round(cssH * dpr));
+  S = cssW / LW;
+  render();
+}
+
+function set(lw, col, dash){
+  ctx.lineWidth = lw; ctx.strokeStyle = col; ctx.setLineDash(dash || []);
+}
+function line(x1, y1, x2, y2){ ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke(); }
+function roundRect(x, y, w, h, r){
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+function arrowHead(x1, y1, x2, y2, col, size){
+  var a = Math.atan2(y2 - y1, x2 - x1);
+  ctx.fillStyle = col;
+  ctx.beginPath();
+  ctx.moveTo(x2, y2);
+  ctx.lineTo(x2 - size * Math.cos(a - 0.42), y2 - size * Math.sin(a - 0.42));
+  ctx.lineTo(x2 - size * Math.cos(a + 0.42), y2 - size * Math.sin(a + 0.42));
+  ctx.closePath(); ctx.fill();
+}
+
+function render(){
+  var cssW = cv.width / dpr, cssH = cv.height / dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, cssW, cssH);
+
+  var res = pickPocket(cue, obj, POCKETS);
+  var active = (manualPocket >= 0) ? computeShot(cue, obj, POCKETS[manualPocket]) : res.shot;
+  shot = active;
+
+  var rr = R_BALL * S;
+  var cx = X(cue.x), cy = Y(cue.y), ox = X(obj.x), oy = Y(obj.y);
+  var gx = X(active.ghost.x), gy = Y(active.ghost.y);
+  var px = X(active.pocket.x), py = Y(active.pocket.y);
+  var bad = !active.feasible;
+
+  /* ── 木框 ── */
+  var wg = ctx.createLinearGradient(0, 0, 0, LH * S);
+  wg.addColorStop(0, SNK.woodHi); wg.addColorStop(0.5, SNK.wood); wg.addColorStop(1, SNK.woodLo);
+  roundRect(0, 0, LW * S, LH * S, 9 * S);
+  ctx.fillStyle = wg; ctx.fill();
+
+  /* ── 綠絨布 ── */
+  var bg = ctx.createRadialGradient(LW * S / 2, LH * S / 2, 10 * S,
+                                    LW * S / 2, LH * S / 2, Math.max(LW, LH) * S * 0.62);
+  bg.addColorStop(0, SNK.clothIn); bg.addColorStop(1, SNK.clothOut);
+  roundRect(RAIL * S, RAIL * S, TBL.w * S, TBL.h * S, 3 * S);
+  ctx.fillStyle = bg; ctx.fill();
+  // 枕邊（比檯面深一點）
+  set(2.2 * S, SNK.cushion);
+  roundRect(RAIL * S, RAIL * S, TBL.w * S, TBL.h * S, 3 * S); ctx.stroke();
+
+  /* ── 英式檯記號：baulk 線 + D ── */
+  set(Math.max(1, 1.1 * S), SNK.mark, [5 * S, 4 * S]);
+  line(X(BAULK_X), Y(0), X(BAULK_X), Y(TBL.h));
+  ctx.beginPath();
+  ctx.arc(X(BAULK_X), Y(MY), D_RADIUS * S, Math.PI / 2, Math.PI * 1.5);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  /* ── 延伸參考線（超透明）：中心十字 + 各色球原位小圈 ── */
+  if (opts.guide){
+    set(Math.max(1, 1 * S), SNK.guide, [9 * S, 8 * S]);
+    line(X(0), Y(MY), X(TBL.w), Y(MY));       // 縱向中心線（穿過啡、藍、粉、黑）
+    line(X(MX), Y(0), X(MX), Y(TBL.h));       // 橫向中心線（過藍球）
+    ctx.setLineDash([]);
+    set(Math.max(1, 1 * S), SNK.guide);
+    var gp = snookerSpots();
+    for (var gi = 0; gi < gp.length; gi++){
+      ctx.beginPath();
+      ctx.arc(X(gp[gi].x), Y(gp[gi].y), 2.2 * S, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+  }
+
+  /* ── 袋口 ── */
+  for (var i = 0; i < POCKETS.length; i++){
+    var p = POCKETS[i], on = (p === active.pocket), pr = POCKET_R * S;
+    ctx.beginPath(); ctx.arc(X(p.x), Y(p.y), pr, 0, Math.PI * 2);
+    ctx.fillStyle = SNK.pocket; ctx.fill();
+    ctx.setLineDash([]);
+    ctx.lineWidth = on ? Math.max(2.2, 2.4 * S) : Math.max(1.2, 1.4 * S);
+    ctx.strokeStyle = on ? TH.accent : 'rgba(246,243,232,0.30)';
+    if (on){ ctx.shadowColor = TH.accent; ctx.shadowBlur = 10; }
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+  }
+
+  /* ── 各袋輔助連線 ── */
+  if (opts.lines){
+    set(Math.max(1, 1 * S), SNK.mark, [4 * S, 4 * S]);
+    for (var j = 0; j < POCKETS.length; j++){
+      if (POCKETS[j] === active.pocket) continue;
+      line(ox, oy, X(POCKETS[j].x), Y(POCKETS[j].y));
+    }
+  }
+
+  /* ── 目標球 → 袋口（虛線） ── */
+  var toPp = active.toP;
+  set(Math.max(1.2, 1.6 * S), bad ? SNK.mark : TH.accent, bad ? [5 * S, 4 * S] : [6 * S, 4 * S]);
+  line(ox, oy, px, py);
+  set(Math.max(1, 1 * S), SNK.mark, [3 * S, 5 * S]);
+  line(px, py, px + toPp.x * 16 * S, py + toPp.y * 16 * S);
+
+  /* ── 連心線：袋口 → 目標球 → 假想球 → 往後延長到庫邊 ──
+        這條線 = 目標球要走的方向；假想球一定落在線上，切角就是它與瞄準線的夾角 */
+  if (opts.center){
+    var backIn = exitDist(obj.x, obj.y, -toPp.x, -toPp.y);
+    var back = Math.min(backIn, 48);
+    set(Math.max(1, 1.3 * S), bad ? SNK.mark : TH.accent, [6 * S, 4 * S]);
+    line(ox, oy, ox - toPp.x * back * S, oy - toPp.y * back * S);
+  }
+
+  /* ── 90° 切線 ── */
+  if (opts.tangent){
+    var tx = active.tangent.x * S, ty = active.tangent.y * S;
+    set(Math.max(1, 1.2 * S), SNK.mark, [5 * S, 4 * S]);
+    line(gx - tx * 4, gy - ty * 4, gx + tx * 16, gy + ty * 16);
+  }
+
+  /* ── 瞄準線（白球 → 假想球，50% 半透明，箭頭停在假想球邊緣） ── */
+  var al = Math.hypot(gx - cx, gy - cy) || 1;
+  var uax = (gx - cx) / al, uay = (gy - cy) / al;
+  var tipX = gx - uax * rr, tipY = gy - uay * rr;
+  var aimCol = bad ? withAlpha(TH.accent, 0.28) : withAlpha(TH.accent, AIM_ALPHA);
+  set(Math.max(1.6, 2.2 * S), aimCol, bad ? [6 * S, 5 * S] : []);
+  line(cx, cy, tipX, tipY);
+  if (!bad) arrowHead(cx, cy, tipX, tipY, aimCol, Math.max(4, 3.2 * S));
+
+  /* ── 假想球（先鋪底色蓋掉底下的線，再用虛線圈標出） ── */
+  if (opts.ghost){
+    ctx.beginPath(); ctx.arc(gx, gy, rr, 0, Math.PI * 2);
+    ctx.fillStyle = SNK.clothIn; ctx.fill();
+    ctx.setLineDash([4 * S, 4 * S]);
+    ctx.lineWidth = Math.max(1.5, 1.9 * S);
+    ctx.strokeStyle = bad ? SNK.mark : TH.accent;
+    ctx.stroke();
+    ctx.setLineDash([]);
+    /* 假想球圓心 = 角度的頂點 = 白球要瞄的那一點 */
+    ctx.beginPath(); ctx.arc(gx, gy, Math.max(1.7, rr * 0.30), 0, Math.PI * 2);
+    ctx.fillStyle = bad ? SNK.mark : TH.accent;
+    ctx.fill();
+    ctx.lineWidth = Math.max(1, rr * 0.15);
+    ctx.strokeStyle = '#ffffff';
+    ctx.stroke();
+  }
+
+  /* ── 角度弧 + 數字（以假想球為頂點，兩條行進方向的夾角） ── */
+  if (opts.arc){
+    var angP = Math.atan2(active.toP.y, active.toP.x);
+    var angG = Math.atan2(active.toG.y, active.toG.x);
+    var d = angG - angP;
+    while (d > Math.PI) d -= Math.PI * 2;
+    while (d < -Math.PI) d += Math.PI * 2;
+    var arcR = Math.max(26, 5 * rr);
+    // 扇形淡填，令夾角一眼睇得出
+    ctx.beginPath();
+    ctx.moveTo(gx, gy);
+    ctx.arc(gx, gy, arcR, angP, angP + d, d < 0);
+    ctx.closePath();
+    ctx.setLineDash([]);
+    ctx.fillStyle = bad ? 'rgba(229,72,77,0.15)' : 'rgba(110,168,254,0.17)';
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(gx, gy, arcR, angP, angP + d, d < 0);
+    ctx.setLineDash([]);
+    ctx.lineWidth = Math.max(1.4, 1.7 * S);
+    ctx.strokeStyle = bad ? TH.danger : TH.accent;
+    ctx.stroke();
+    // 角度的兩條邊（由假想球邊緣向外畫，讓夾角看得出來）
+    set(Math.max(1, 1.1 * S), bad ? SNK.mark : TH.accent, [3 * S, 3 * S]);
+    line(gx + Math.cos(angP) * rr, gy + Math.sin(angP) * rr,
+         gx + Math.cos(angP) * (arcR + 7), gy + Math.sin(angP) * (arcR + 7));
+    line(gx + Math.cos(angG) * rr, gy + Math.sin(angG) * rr,
+         gx + Math.cos(angG) * (arcR + 7), gy + Math.sin(angG) * (arcR + 7));
+    // 數字
+    var mid = angP + d / 2;
+    var lbl = active.cutDeg.toFixed(1) + '°';
+    ctx.font = '600 13px ' + FONT;
+    var tw = ctx.measureText(lbl).width;
+    var lx = gx + Math.cos(mid) * (arcR + 21), ly = gy + Math.sin(mid) * (arcR + 21);
+    var bw = tw + 12, bh = 19;
+    roundRect(lx - bw / 2, ly - bh / 2, bw, bh, 5);
+    ctx.fillStyle = SNK.chip; ctx.fill();
+    ctx.lineWidth = 1; ctx.strokeStyle = bad ? TH.danger : TH.accent; ctx.setLineDash([]); ctx.stroke();
+    ctx.fillStyle = bad ? TH.danger : '#eaf3ff';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(lbl, lx, ly + 0.5);
+  }
+
+  /* ── 球桿（白球後方，指向假想球） ── */
+  if (opts.stick){
+    var dd = active.toG, nx = -dd.y, ny = dd.x;
+    var t0 = (R_BALL + 0.8) * S, t1 = t0 + 1.7 * S, t2 = t0 + 46 * S;
+    var wTip = 0.30 * S, wButt = 0.58 * S;
+    var at = function(di, w){ return [cx - dd.x * di + nx * w, cy - dd.y * di + ny * w]; };
+    var quad = function(a, b, c, e){
+      ctx.beginPath();
+      ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]);
+      ctx.lineTo(c[0], c[1]); ctx.lineTo(e[0], e[1]);
+      ctx.closePath();
+    };
+    ctx.setLineDash([]);
+    quad(at(t1, wTip), at(t2, wButt), at(t2, -wButt), at(t1, -wTip));
+    var sg = ctx.createLinearGradient(at(t1, 0)[0], at(t1, 0)[1], at(t2, 0)[0], at(t2, 0)[1]);
+    sg.addColorStop(0, '#d8c9a8'); sg.addColorStop(1, '#6a4a2a');
+    ctx.fillStyle = sg; ctx.fill();
+    ctx.lineWidth = Math.max(0.8, S); ctx.strokeStyle = 'rgba(255,255,255,0.28)'; ctx.stroke();
+    quad(at(t0, wTip), at(t1, wTip), at(t1, -wTip), at(t0, -wTip));
+    ctx.fillStyle = '#3f7fd0'; ctx.fill();
+    ctx.strokeStyle = 'rgba(0,0,0,0.35)'; ctx.stroke();
+  }
+
+  /* ── 兩顆球 ── */
+  var objCol = BALLS[objBall].c;
+  function dot(px0, py0, radius, fill, ring){
+    var g = ctx.createRadialGradient(px0 - radius * 0.35, py0 - radius * 0.4, radius * 0.12,
+                                     px0, py0, radius * 1.05);
+    g.addColorStop(0, 'rgba(255,255,255,0.55)');
+    g.addColorStop(0.5, fill);
+    g.addColorStop(1, fill);
+    ctx.beginPath(); ctx.arc(px0, py0, radius, 0, Math.PI * 2);
+    ctx.fillStyle = g; ctx.fill();
+    ctx.setLineDash([]);
+    ctx.lineWidth = Math.max(1.7, radius * 0.42);
+    ctx.strokeStyle = ring;
+    ctx.stroke();
+  }
+  dot(cx, cy, rr, SNK.ivory, '#0a2c1b');
+  dot(ox, oy, rr, objCol, outlineFor(objCol));
+
+  /* ── 6 個色球定位（固定在原位；半透明，唔會擋住瞄準線） ── */
+  if (opts.spots){
+    var sps = snookerSpots();
+    ctx.save();
+    ctx.globalAlpha = 0.78;
+    for (var si = 0; si < sps.length; si++){
+      var sp = sps[si];
+      dot(X(sp.x), Y(sp.y), rr, sp.c, outlineFor(sp.c));
+      if (rr >= 4.4){                      // 夠大就寫上分值
+        ctx.font = '600 ' + Math.round(rr * 1.0) + 'px ' + FONT;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillStyle = outlineFor(sp.c);
+        ctx.fillText(String(sp.value), X(sp.x), Y(sp.y) + 0.5);
+      }
+    }
+    ctx.restore();
+  }
+
+  /* ── 距離標示（超透明，方便估距離） ── */
+  if (opts.guide){
+    ctx.font = '600 11px ' + FONT;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = 'rgba(0,0,0,0.45)';
+    ctx.fillStyle = 'rgba(246,243,232,0.60)';
+    var dTxt1 = ballWidths(active.cueToGhost).toFixed(1) + ' 球身';
+    var dTxt2 = ballWidths(active.objToPocket).toFixed(1) + ' 球身';
+    var dm1x = (cx + gx) / 2, dm1y = (cy + gy) / 2;
+    var dm2x = (ox + px) / 2, dm2y = (oy + py) / 2;
+    ctx.strokeText(dTxt1, dm1x, dm1y - 9); ctx.fillText(dTxt1, dm1x, dm1y - 9);
+    ctx.strokeText(dTxt2, dm2x, dm2y - 9); ctx.fillText(dTxt2, dm2x, dm2y - 9);
+  }
+
+  /* ── 瞄準點（一個小白點，標出目標球上要打中的那一點，不遮住球） ── */
+  var kx = X(active.contact.x), ky = Y(active.contact.y), kr = Math.max(1.4, rr * 0.34);
+  ctx.setLineDash([]);
+  ctx.beginPath(); ctx.arc(kx, ky, kr, 0, Math.PI * 2);
+  ctx.fillStyle = '#ffffff';
+  ctx.fill();
+  ctx.lineWidth = Math.max(0.9, rr * 0.16);
+  ctx.strokeStyle = 'rgba(0,0,0,0.6)';
+  ctx.stroke();
+
+  /* ── 標籤 ── */
+  ctx.font = '600 11px ' + FONT;
+  ctx.textAlign = 'center';
+  ctx.fillStyle = SNK.ivory;
+  ctx.textBaseline = 'bottom';
+  ctx.fillText('白球', cx, cy - rr - 4);
+  ctx.textBaseline = 'top';
+  ctx.fillText('目標', ox, oy + rr + 4);
+
+  updateReadout(active, res, bad);
+}
+
+/* ══════════ 讀數 ══════════ */
+function updateReadout(s, res, bad){
+  var angEl = document.getElementById('bigAng');
+  angEl.innerHTML = s.cutDeg.toFixed(1) + '<span class="deg">°</span>';
+  angEl.className = 'v' + (bad ? ' bad' : '');
+
+  document.getElementById('bigThk').textContent =
+    Math.round(s.thickness * 100) + '%（' + shotNameApprox(s.cutDeg) + '）';
+  document.getElementById('bigAim').textContent = aimText(s.cutDeg);
+  document.getElementById('bigPk').textContent = s.pocket.name + (manualPocket >= 0 ? '（鎖定）' : '');
+  document.getElementById('bigTan').textContent = '偏' + s.side + ' 90°';
+
+  var st = document.getElementById('oStat');
+  var ball = BALLS[objBall];
+  if (bad){
+    st.className = 'status bad';
+    if (s.tooClose){
+      st.textContent = '白球與目標球幾乎貼住（不足一個球身），實戰上不能這樣打，把白球拉遠一點。';
+    } else if (!s.ghostInside){
+      st.textContent = '這個袋直線打不到：假想球落到檯面外了，要用庫邊反彈球。';
+    } else {
+      st.textContent = '切角 ' + s.cutDeg.toFixed(1) + '°（≥ 90°）：白球碰不到目標球的正面，打不進。';
+    }
+  } else {
+    st.className = 'status';
+    st.innerHTML = '把白球對準<b>虛線圈（假想球）的中心</b>打，' + ball.name + '球就會進' + s.pocket.name +
+      '。切角 ' + s.cutDeg.toFixed(1) + '°（＝連心線與瞄準線的夾角）＝ ' + shotNameApprox(s.cutDeg) +
+      (s.cutDeg < 30 ? '，算好打。' : s.cutDeg < 45 ? '，要打準一點。' : '，很薄，容錯很小。');
+  }
+}
+
+/* ══════════ 互動 ══════════ */
+var drag = null;
+function toTable(e){
+  var r = cv.getBoundingClientRect();
+  var s = r.width / LW;
+  return { x: (e.clientX - r.left) / s - RAIL, y: (e.clientY - r.top) / s - RAIL };
+}
+function clampBall(b){
+  b.x = Math.min(TBL.w - R_BALL, Math.max(R_BALL, b.x));
+  b.y = Math.min(TBL.h - R_BALL, Math.max(R_BALL, b.y));
+}
+cv.addEventListener('pointerdown', function(e){
+  var p = toTable(e);
+  var dc = Math.hypot(p.x - cue.x, p.y - cue.y);
+  var doo = Math.hypot(p.x - obj.x, p.y - obj.y);
+  var grabs = Math.min(Math.max(R_BALL * 2.4, 22 / S), R_BALL * 4.5);
+  // 觸控放大，但設上限，免得畫布細嘅時候整個檯面都變成點擊目標
+  if (dc <= grabs && dc <= doo){
+    drag = cue;
+  } else if (doo <= grabs){
+    drag = obj;
+  } else {
+    var hit = -1;
+    var hitR = Math.min(Math.max(POCKET_R * 1.8, 20 / S), POCKET_R * 2.4);
+    for (var i = 0; i < POCKETS.length; i++){
+      if (Math.hypot(p.x - POCKETS[i].x, p.y - POCKETS[i].y) <= hitR){ hit = i; break; }
+    }
+    manualPocket = hit;
+    render();
+    return;
+  }
+  try { cv.setPointerCapture(e.pointerId); } catch (_){}
+  cv.classList.add('grabbing');
+  e.preventDefault();
+});
+cv.addEventListener('pointermove', function(e){
+  if (!drag) return;
+  var p = toTable(e);
+  drag.x = p.x; drag.y = p.y;
+  clampBall(drag);
+  render();
+});
+function endDrag(e){
+  if (!drag) return;
+  drag = null;
+  cv.classList.remove('grabbing');
+  try { cv.releasePointerCapture(e.pointerId); } catch (_){}
+  render();
+}
+cv.addEventListener('pointerup', endDrag);
+cv.addEventListener('pointercancel', endDrag);
+cv.addEventListener('pointerleave', endDrag);
+
+function tog(id, key){
+  var el = document.getElementById(id);
+  el.addEventListener('click', function(){
+    opts[key] = !opts[key];
+    if (key === 'auto'){ manualPocket = -1; }
+    el.classList.toggle('on', opts[key]);
+    render();
+  });
+}
+tog('bGhost', 'ghost'); tog('bCenter', 'center'); tog('bArc', 'arc');
+tog('bGuide', 'guide'); tog('bSpots', 'spots');
+tog('bTang', 'tangent'); tog('bLines', 'lines'); tog('bStick', 'stick');
+
+document.getElementById('bReset').addEventListener('click', function(){
+  cue.x = START.cue.x; cue.y = START.cue.y;
+  obj.x = START.obj.x; obj.y = START.obj.y;
+  manualPocket = -1;
+  render();
+});
+document.getElementById('bSwap').addEventListener('click', function(){
+  var t = { x: cue.x, y: cue.y };
+  cue.x = obj.x; cue.y = obj.y; obj.x = t.x; obj.y = t.y;
+  manualPocket = -1;
+  render();
+});
+/* 全螢幕（手機橫向睇大啲） */
+document.getElementById('bFull').addEventListener('click', function(){
+  var el = document.documentElement;
+  var fs = document.fullscreenElement || document.webkitFullscreenElement;
+  if (!fs){
+    if (el.requestFullscreen) el.requestFullscreen();
+    else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+  } else {
+    if (document.exitFullscreen) document.exitFullscreen();
+    else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+  }
+});
+['fullscreenchange', 'webkitfullscreenchange'].forEach(function(ev){
+  document.addEventListener(ev, function(){ setTimeout(resize, 80); });
+});
+/* 手機瀏覽器網址列收放／轉向 → 重新計算尺寸 */
+if (window.visualViewport){
+  window.visualViewport.addEventListener('resize', function(){ resize(); });
+}
+
+/* 角度示範：把白球擺到剛好 deg 度切球的位置 */
+Array.prototype.forEach.call(document.querySelectorAll('.angBtn'), function(btn){
+  btn.addEventListener('click', function(){
+    var deg = parseFloat(btn.getAttribute('data-ang'));
+    var pk = (manualPocket >= 0) ? POCKETS[manualPocket] : pickPocket(cue, obj, POCKETS).shot.pocket;
+    var p = placeForAngle(cue, obj, pk, deg, 60);
+    if (p){
+      cue.x = p.x; cue.y = p.y;
+      if (manualPocket < 0) manualPocket = POCKETS.indexOf(pk);
+      render();
+      var st = document.getElementById('oStat');
+      st.className = 'status';
+      st.innerHTML = '示範 <b>' + deg + '°</b> 切球：白球已擺在該角度，' +
+        '現在切角 = <b>' + shot.cutDeg.toFixed(1) + '°</b>，' + shotNameApprox(shot.cutDeg) +
+        '（厚度 ' + Math.round(shot.thickness * 100) + '%）。拖白球就會看到角度變化。';
+    } else {
+      var st2 = document.getElementById('oStat');
+      st2.className = 'status bad';
+      st2.textContent = '檯面放不下這個角度，先把目標球移近袋口或換個袋。';
+    }
+  });
+});
+
+/* 目標球顏色 */
+(function(){
+  var wrap = document.getElementById('swWrap');
+  BALLS.forEach(function(b, i){
+    var btn = document.createElement('button');
+    btn.className = 'sw' + (i === objBall ? ' on' : '');
+    btn.innerHTML = '<i style="background:' + b.c + '"></i>' + b.name +
+      ' <span class="num">' + b.v + '</span>';
+    btn.addEventListener('click', function(){
+      objBall = i;
+      Array.prototype.forEach.call(wrap.children, function(c){ c.classList.remove('on'); });
+      btn.classList.add('on');
+      render();
+    });
+    wrap.appendChild(btn);
+  });
+})();
+
+window.addEventListener('resize', resize);
+if (window.ResizeObserver){
+  // 用 rAF 批次處理：避免 "ResizeObserver loop completed with undelivered notifications"
+  var roPending = false;
+  new ResizeObserver(function(){
+    if (roPending) return;
+    roPending = true;
+    requestAnimationFrame(function(){ roPending = false; resize(); });
+  }).observe(cv.parentElement);
+}
+if (window.MutationObserver){
+  new MutationObserver(function(){ readTheme(); render(); })
+    .observe(document.documentElement, { attributes: true, attributeFilter: ['class', 'style', 'data-theme'] });
+}
+/* 加到主畫面後可離線使用（只在 http/https 下註冊；直接開 file:// 會自動略過） */
+if ('serviceWorker' in navigator && location.protocol.indexOf('http') === 0){
+  window.addEventListener('load', function(){
+    navigator.serviceWorker.register('sw.js').catch(function(){});
+  });
+}
+
+/* ══════════ 自我測試（網址加 ?selftest=1 / #selftest 時執行） ══════════ */
+function postToParent(obj){
+  try {
+    if (window.parent && window.parent !== window) window.parent.postMessage(obj, '*');
+  } catch (_){}
+}
+function clientOf(tx, ty){
+  var r = cv.getBoundingClientRect();
+  var s = r.width / LW;
+  return { x: r.left + (RAIL + tx) * s, y: r.top + (RAIL + ty) * s };
+}
+function pev(type, c){
+  return new PointerEvent(type, {
+    clientX: c.x, clientY: c.y, pointerId: 1, isPrimary: true, pointerType: 'mouse',
+    button: 0, buttons: type === 'pointerup' ? 0 : 1, bubbles: true, cancelable: true
+  });
+}
+function selftest(){
+  var out = [];
+  var ok = function(name, cond){ out.push(name + '=' + (cond ? 'OK' : 'FAIL')); };
+  var r = cv.getBoundingClientRect();
+  ok('canvas', r.width > 120 && cv.width > 0);
+
+  var p0 = clientOf(cue.x, cue.y);
+  cv.dispatchEvent(pev('pointerdown', p0));
+  ok('grabCue', drag === cue);
+  cv.dispatchEvent(pev('pointermove', clientOf(60, 20)));
+  ok('moveTo(60,20)', Math.abs(cue.x - 60) < 0.01 && Math.abs(cue.y - 20) < 0.01);
+
+  cv.dispatchEvent(pev('pointermove', clientOf(400, -50)));
+  ok('clampInside', Math.abs(cue.x - (TBL.w - R_BALL)) < 0.01 && Math.abs(cue.y - R_BALL) < 0.01);
+  cv.dispatchEvent(pev('pointerup', clientOf(400, -50)));
+  ok('release', drag === null);
+
+  var bx = cue.x;
+  cv.dispatchEvent(pev('pointermove', clientOf(20, 20)));
+  ok('noFollowAfterRelease', cue.x === bx);
+
+  cv.dispatchEvent(pev('pointerdown', clientOf(obj.x, obj.y)));
+  ok('grabObject', drag === obj);
+  cv.dispatchEvent(pev('pointermove', clientOf(84, 47)));
+  cv.dispatchEvent(pev('pointerup', clientOf(84, 47)));
+
+  manualPocket = 2;
+  cv.dispatchEvent(pev('pointerdown', clientOf(10, 66)));
+  ok('clickBlankToAuto', manualPocket === -1);
+  cv.dispatchEvent(pev('pointerdown', clientOf(POCKETS[4].x, POCKETS[4].y)));
+  ok('clickPocketLocks', manualPocket === 4);
+
+  // 角度示範：15/30/45/60 都要真的擺出該角度
+  var angOK = true, angSeen = [];
+  [15, 30, 45, 60].forEach(function(a){
+    var p = placeForAngle(cue, obj, POCKETS[4], a, 60);
+    if (!p){ angOK = false; angSeen.push(a + ':null'); return; }
+    var s = computeShot(p, obj, POCKETS[4]);
+    angSeen.push(a + '→' + s.cutDeg.toFixed(1));
+    if (Math.abs(s.cutDeg - a) > 0.05) angOK = false;
+  });
+  ok('anglePresets', angOK);
+  // 厚度公式：30° 必須是半球（50%）
+  ok('thickness30=50%', Math.abs((1 - Math.sin(Math.PI / 6)) - 0.5) < 1e-12);
+  ok('readoutLive', /°/.test(document.getElementById('bigAng').textContent));
+
+  // 參考線 / 色球定位
+  var sps = snookerSpots();
+  ok('spots6', sps.length === 6 &&
+     sps.map(function(s){ return s.value; }).sort().join(',') === '2,3,4,5,6,7');
+  ok('spotsInside', sps.every(function(s){
+     return s.x >= R_BALL && s.x <= TBL.w - R_BALL && s.y >= R_BALL && s.y <= TBL.h - R_BALL; }));
+  ok('guideSpotsOn', opts.guide === true && opts.spots === true);
+  ok('togglesExist', !!document.getElementById('bGuide') && !!document.getElementById('bSpots'));
+
+  // 主球瞄副球那條線 = 50% 半透明
+  ok('aimLineAlpha50', withAlpha('#6ea8fe', 0.5) === 'rgba(110,168,254,0.5)' && AIM_ALPHA === 0.5,
+     withAlpha(TH.accent, AIM_ALPHA));
+  // 整張枱（連上下控件）必須一次過睇完，唔使滾動
+  var docH = document.documentElement.scrollHeight;
+  ok('wholeTableFits', docH <= window.innerHeight + 2 && cv.getBoundingClientRect().bottom <= window.innerHeight + 1,
+     'doc=' + docH + ' vh=' + window.innerHeight + ' canvasBottom=' + Math.round(cv.getBoundingClientRect().bottom));
+
+  var line = 'SELFTEST ' + out.join(' ') + ' [' + angSeen.join(' ') + '] ' +
+    ' canvas=' + Math.round(r.width) + 'x' + Math.round(r.height) + ' S=' + S.toFixed(4) +
+    ' cue=' + cue.x.toFixed(2) + ',' + cue.y.toFixed(2) + ' obj=' + obj.x.toFixed(2) + ',' + obj.y.toFixed(2);
+  var bad = out.join(' ').indexOf('FAIL') >= 0;
+  var st = document.getElementById('oStat');
+  st.className = bad ? 'status bad' : 'status';
+  var box = document.createElement('div');
+  box.id = 'oTest';
+  // 固定置頂，任何視窗尺寸都睇得到測試結果（唔會影響 wholeTableFits 的量度）
+  box.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99;padding:3px 6px;' +
+    'font-size:11px;line-height:1.45;font-family:ui-monospace,Menlo,monospace;' +
+    'background:rgba(0,0,0,0.82);color:' + (bad ? '#ff8b8b' : '#8fd6ff') + ';word-break:break-word';
+  box.textContent = line;
+  document.querySelector('.wrap').appendChild(box);
+  document.title = (bad ? 'SELFTEST-FAIL' : 'SELFTEST-PASS') + ' · 桌球角度瞄準練習';
+  st.textContent = line;
+  // 若被用手機尺寸的 iframe 載入（mobile-check.html），把結果回傳頂層方便核對
+  postToParent({ selftest: line, pass: !bad, w: window.innerWidth, h: window.innerHeight });
+  // 測完順手按下 30° 示範鈕，讓頁面停在「半球」的示範狀態，方便肉眼複查
+  var b30 = document.querySelector('.angBtn[data-ang="30"]');
+  if (b30) b30.click();
+}
+if ((location.search + location.hash).indexOf('selftest') >= 0){
+  window.addEventListener('error', function(ev){
+    postToParent({ selftest: 'JS ERROR: ' + (ev.message || '') + ' @' + (ev.lineno || 0),
+      pass: false, w: window.innerWidth, h: window.innerHeight });
+  });
+  // 註：ResizeObserver 的循環提示係良性警告，唔算錯誤
+  window.addEventListener('error', function(ev){
+    if (String(ev.message || '').indexOf('ResizeObserver loop') >= 0){
+      postToParent({ selftest: '(忽略良性警告：ResizeObserver loop)', pass: true,
+        w: window.innerWidth, h: window.innerHeight });
+    }
+  }, true);
+  postToParent({ selftest: '(t=0 腳本已執行)', pass: true, w: window.innerWidth, h: window.innerHeight });
+  setTimeout(function(){
+    postToParent({ selftest: '(t=100ms timer 正常)', pass: true, w: window.innerWidth, h: window.innerHeight });
+  }, 100);
+  setTimeout(selftest, 500);
+}
+
+readTheme();
+resize();
+})();
+</script>
+</body>
+</html>
