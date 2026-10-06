@@ -80,8 +80,28 @@
   .sw.on{border-color:var(--accent,#6ea8fe);color:var(--accent,#6ea8fe)}
   .sw .num{font-size:10px;color:var(--muted-foreground,#9aa0a6)}
 
-  canvas{display:block;width:100%;height:auto;touch-action:none;cursor:grab;user-select:none}
+  canvas{display:block;width:100%;height:auto;touch-action:none;cursor:grab;user-select:none;
+         -webkit-user-select:none;-webkit-touch-callout:none}
   canvas.grabbing{cursor:grabbing}
+
+  /* iOS 加到主畫面後（standalone）：避開劉海／狀態欄，感覺似原生 App */
+  @media (display-mode: standalone){
+    .wrap{padding:env(safe-area-inset-top) env(safe-area-inset-right)
+                  env(safe-area-inset-bottom) env(safe-area-inset-left)}
+  }
+
+  /* iOS 安裝提示（只在 iPhone/iPad 未安裝時顯示） */
+  .iostip{display:none}
+  .iostip.on{
+    display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;
+    background:color-mix(in oklab, var(--accent,#6ea8fe) 14%, transparent);
+    border:1px solid var(--accent,#6ea8fe);border-radius:8px;
+    padding:6px 10px;margin:0 0 9px 0;font-size:12.5px;color:var(--foreground,#e8e8e8);
+  }
+  .iostip button{
+    font:inherit;font-size:11.5px;background:transparent;color:var(--accent,#6ea8fe);
+    border:1px solid var(--accent,#6ea8fe);border-radius:6px;padding:3px 9px;cursor:pointer;
+  }
 
   .status{margin-top:8px;font-size:12.5px;color:var(--muted-foreground,#9aa0a6);min-height:3.3em;line-height:1.6}
   .status.bad{color:var(--destructive,#e5484d)}
@@ -147,6 +167,11 @@
 </head>
 <body>
 <div class="wrap">
+
+  <div class="iostip" id="iosTip">
+    <span>想當 App 用：按 <b>分享</b> ⬆️ → <b>加到主畫面</b>（之後有圖示、全螢幕、離線都用得）</span>
+    <button id="iosTipX">知道了</button>
+  </div>
 
   <div class="hud">
     <div class="hudL">
@@ -483,8 +508,11 @@ function resize(){
               (parseFloat(cs.marginTop) || 0) + (parseFloat(cs.marginBottom) || 0);
   }
   var vh = window.innerHeight || 900;
+  // 自己的上下內距（iOS standalone 的 safe-area）都要扣
+  var wrapCS = getComputedStyle(wrap);
+  var ownPad = (parseFloat(wrapCS.paddingTop) || 0) + (parseFloat(wrapCS.paddingBottom) || 0);
   // 只留 60px 下限；真正防止過細嘅係 fitWidth() 內部嘅 120px 寬度下限
-  var availH = Math.max(60, vh - chrome - 10);
+  var availH = Math.max(60, vh - chrome - ownPad - 10);
   var cssW = fitWidth(availW, availH, LW, LH);
   if (Math.abs(cssW - lastW) < 0.6 && cv.width > 0) return;   // 尺寸無變 → 避免迴圈
   lastW = cssW;
@@ -918,6 +946,23 @@ if (window.visualViewport){
   window.visualViewport.addEventListener('resize', function(){ resize(); });
 }
 
+/* iOS：未加到主畫面時提示一下（加到主畫面之後就唔會再出現） */
+(function(){
+  var ua = navigator.userAgent || '';
+  var isIOS = /iPad|iPhone|iPod/.test(ua) ||
+              (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  var standalone = (navigator.standalone === true) ||
+                   (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
+  if (!isIOS || standalone) return;
+  var tip = document.getElementById('iosTip');
+  if (!tip) return;
+  tip.classList.add('on');
+  document.getElementById('iosTipX').addEventListener('click', function(){
+    tip.classList.remove('on');
+    resize();
+  });
+})();
+
 /* 角度示範：把白球擺到剛好 deg 度切球的位置 */
 Array.prototype.forEach.call(document.querySelectorAll('.angBtn'), function(btn){
   btn.addEventListener('click', function(){
@@ -1051,6 +1096,10 @@ function selftest(){
      return s.x >= R_BALL && s.x <= TBL.w - R_BALL && s.y >= R_BALL && s.y <= TBL.h - R_BALL; }));
   ok('guideSpotsOn', opts.guide === true && opts.spots === true);
   ok('togglesExist', !!document.getElementById('bGuide') && !!document.getElementById('bSpots'));
+  // iOS 安裝提示：非 iOS 裝置唔應該顯示（否則會白佔一行）
+  var tipEl = document.getElementById('iosTip');
+  ok('iosTipHiddenOffIOS', !!tipEl && getComputedStyle(tipEl).display === 'none' &&
+     !tipEl.classList.contains('on'));
 
   // 主球瞄副球那條線 = 50% 半透明
   ok('aimLineAlpha50', withAlpha('#6ea8fe', 0.5) === 'rgba(110,168,254,0.5)' && AIM_ALPHA === 0.5,
