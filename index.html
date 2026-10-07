@@ -47,6 +47,12 @@
   .hudR .row{display:flex;gap:8px}
   .hudR .k2{min-width:5.6em;color:var(--muted-foreground,#9aa0a6)}
 
+  /* ── 視線圖（從白球後方望過去：睇白球同目標球重疊幾多） ── */
+  .ivBox{display:flex;align-items:center;gap:7px;margin-left:auto;padding-bottom:2px}
+  .ivBox canvas{display:block}
+  .ivCap{font-size:10.5px;line-height:1.3;color:var(--muted-foreground,#9aa0a6)}
+  .ivCap b{display:block;color:var(--foreground,#e8e8e8);font-weight:600;font-size:11px}
+
   /* ── 按鈕列 ── */
   .bar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:0 0 8px 0}
   .bar .lbl{
@@ -141,6 +147,7 @@
   /* ── 手機橫向／矮螢幕：精簡控件，騰出高度俾張枱 ── */
   @media (max-height: 560px){
     .bar .lbl, #swWrap{display:none}
+    .ivBox{display:none}          /* 視線圖最食位，矮螢幕收起；五分點讀數仍然有 */
     .hud{gap:10px;margin-bottom:6px}
     .hudL .v{font-size:26px}
     .hudL .v .deg{font-size:15px}
@@ -180,9 +187,14 @@
     </div>
     <div class="hudR">
       <div class="row"><span class="k2">擊球厚度</span><b id="bigThk">–</b></div>
+      <div class="row"><span class="k2">五分點</span><b id="bigFive">–</b></div>
       <div class="row"><span class="k2">瞄準點</span><b id="bigAim">–</b></div>
       <div class="row"><span class="k2">目標袋</span><b id="bigPk">–</b></div>
       <div class="row"><span class="k2">白球撞後</span><b id="bigTan">–</b></div>
+    </div>
+    <div class="ivBox">
+      <canvas id="iv"></canvas>
+      <span class="ivCap"><b>從白球後面望</b>藍色 = 白球同目標球嘅重疊</span>
     </div>
   </div>
 
@@ -218,16 +230,32 @@
   <div class="status" id="oStat">拖曳白球或目標球，切角會即時顯示。</div>
 
   <details class="ref">
-    <summary>角度 ↔ 厚度 對照表</summary>
+    <summary>角度 ↔ 厚度 ↔ 五分點 對照表</summary>
     <table>
-      <tr><th>打法</th><th>切角</th><th>瞄準點（目標球上）</th></tr>
-      <tr><td>全波</td><td class="n">0°</td><td>球的正中心</td></tr>
-      <tr><td>3/4 波</td><td class="n">14.5°</td><td>中心與邊緣的 1/4 處</td></tr>
-      <tr><td>半球</td><td class="n">30°</td><td>中心與邊緣的正中間</td></tr>
-      <tr><td>1/4 波</td><td class="n">48.6°</td><td>中心與邊緣的 3/4 處</td></tr>
-      <tr><td>1/8 波</td><td class="n">61°</td><td>幾乎貼著邊緣</td></tr>
+      <tr><th>打法</th><th>切角</th><th>厚度</th><th>五分點</th></tr>
+      <tr><td>全波</td><td class="n">0°</td><td class="n">100%</td><td>5/5（過球心）</td></tr>
+      <tr><td>3/4 波</td><td class="n">14.5°</td><td class="n">75%</td><td>3/5</td></tr>
+      <tr><td>半球</td><td class="n">30°</td><td class="n">50%</td><td>0（貼住球邊）</td></tr>
+      <tr><td>1/4 波</td><td class="n">48.6°</td><td class="n">25%</td><td>外 2/5</td></tr>
+      <tr><td>1/8 波</td><td class="n">61°</td><td class="n">12.5%</td><td>外 3/5</td></tr>
+    </table>
+    <table>
+      <tr><th>五分點</th><th class="n">5/5</th><th class="n">4/5</th><th class="n">3/5</th><th class="n">2/5</th><th class="n">1/5</th><th class="n">0</th><th class="n">外1/5</th><th class="n">外2/5</th><th class="n">外3/5</th><th class="n">外4/5</th></tr>
+      <tr><td>切角</td><td class="n">0°</td><td class="n">5.7°</td><td class="n">11.5°</td><td class="n">17.5°</td><td class="n">23.6°</td><td class="n">30°</td><td class="n">36.9°</td><td class="n">44.4°</td><td class="n">53.1°</td><td class="n">64.2°</td></tr>
+      <tr><td>厚度</td><td class="n">100%</td><td class="n">90%</td><td class="n">80%</td><td class="n">70%</td><td class="n">60%</td><td class="n">50%</td><td class="n">40%</td><td class="n">30%</td><td class="n">20%</td><td class="n">10%</td></tr>
     </table>
     <div class="tip">
+      <b>重疊法（來源：知乎《台球重叠法瞄准角度对照表》）</b>：判角度最實用嘅一把尺叫「<b>五分點</b>」——
+      把目標球半徑分 5 份（每份 = 半徑 ÷ 5），量瞄準線（白球 → 假想球球心）距離目標球邊緣有幾多份：
+      過球心 = <b>5/5</b>、貼住球邊 = <b>0</b>（就係 30°、半球），再薄就係瞄球外（<b>外 1/5</b> … <b>外 4/5</b>）。<br>
+      口訣：<b>每移一格，厚度就減 10%</b> → 5/5 = 100%、4/5 = 90%、3/5 = 80%、2/5 = 70%、1/5 = 60%、
+      0 = 50%、外1/5 = 40%、外2/5 = 30%、外3/5 = 20%、外4/5 = 10%。<br>
+      刻度唔係等分度數（因為 sin 唔係直線）：0°、5.7°、11.5°、17.5°、23.6°、30°、36.9°、44.4°、53.1°、64.2°。
+      即係文章講嘅「30° 內約每 6° 一格，30° 外每 7~11° 一格」。<br>
+      <b>加一法則</b>（文章嘅經驗值）：要打 1/4 球（≈48.6°）時，可以由球邊再向外推約一個「球皮」嘅距離去瞄。<br>
+      右上角<b>「從白球後面望」</b>個圖就係重疊法嘅眼睇畫面：白 = 白球、彩色 = 目標球、藍 = 兩球重疊（＝厚度）；
+      橫尺係五分點，虛線係瞄準線。<br>
+      <br>
       <b>切角（進球角度）係點得出嚟：</b><br>
       ① <b>連心線</b>（虛線）＝由袋口穿過目標球、再向目標球後面延長。目標球就係沿住呢條線滾入袋，所以佢＝目標球要走嘅方向。<br>
       ② 白球撞到目標球嗰一刻，兩個球心相距一個球直徑；所以白球球心一定喺連心線上、目標球後面 2 個球身嘅位置 → 呢個就係 <b>假想球</b>（虛線圈，圈心有粒小點）。<br>
@@ -347,6 +375,37 @@ function snookerSpots(){
 /* 吋 → 幾個球身（球直徑為單位） */
 function ballWidths(inch){ return inch / (2 * R_BALL); }
 
+/* ══════════ 重疊法（來源：知乎《台球重叠法瞄准角度对照表》）══════════
+   ① 重疊比例 ＝ 1 − sin θ，即本工具一直用嘅「擊球厚度」。
+      文章對照表逐格核對過都一致（0°→100%、6°→90%、30°→50%、48.6°→25%、90°→0%）。
+   ② 「五分點」＝把半徑 R 分 5 份（每份 R/5），量度「擊球線（白球 → 假想球球心）
+      距離目標球近邊」有幾多份：
+        過球心 5/5（0°）→ 4/5（5.74°）→ 3/5（11.54°）→ 2/5（17.46°）→ 1/5（23.58°）
+        → 貼住球邊 0（30°，即半球）→ 再薄就瞄球外：外1/5（36.87°）、外2/5（44.43°）、
+        外3/5（53.13°）、外4/5（64.16°）。
+      數學：擊球線離目標球球心 = 2R·sinθ，所以份數 k = round(5 × |1 − 2sinθ|)。
+      刻度角度 = asin(k/10)，唔係等分度數（30° 內約每 6°、30° 外每 7~11° 一格）。 */
+function overlapPct(deg){ return (1 - Math.sin(deg * Math.PI / 180)) * 100; }
+function fifthsAt(deg){
+  var p = 2 * Math.sin(deg * Math.PI / 180);   // 擊球線離目標球球心（以 R 為單位）
+  var v = 1 - p;                               // 1 = 過球心、0 = 貼住球邊、負數 = 已出球外
+  var k = Math.round(Math.abs(v) * 5);
+  if (k > 5) k = 5;
+  var out = v < -1e-4;
+  return {
+    p: p, v: v, k: k, outside: out, distR: Math.abs(v),
+    short: (k === 0 ? '邊緣' : (out ? '外 ' : '') + k + '/5'),
+    text:  (k === 0 ? '貼住球邊' : (out ? '球外 ' : '離球邊 ') + k + '/5')
+  };
+}
+/* 文章原表嘅錨點：k = 份數、deg = 對應角度、lbl = 文章寫法（用嚟核對實作） */
+var FIFTH_ANCHORS = [
+  [5, 0,       '5/5'],   [4, 5.7392,  '4/5'],   [3, 11.5370, '3/5'],
+  [2, 17.4576, '2/5'],   [1, 23.5782, '1/5'],   [0, 30,      '邊緣'],
+  [1, 36.8699, '外 1/5'], [2, 44.4270, '外 2/5'], [3, 53.1301, '外 3/5'],
+  [4, 64.1581, '外 4/5']
+];
+
 /* 檯面均分格線：GRID_COLS × GRID_ROWS = 6 × 4 = 24 格，24 格全部一樣大。
    用途：唔靠感覺，直接數格估距離／位置。
    長邊 140.5 ÷ 6 = 23.417″、短邊 70 ÷ 4 = 17.5″。
@@ -459,6 +518,8 @@ var SNK = {
   mark:     'rgba(240,245,235,0.20)',
   guide:    'rgba(240,245,235,0.15)',
   guide2:   'rgba(240,245,235,0.26)',
+  ivTick:   'rgba(246,243,232,0.72)',
+  ivDark:   'rgba(6,26,16,0.55)',
   ivory:    '#f6f3e8',
   chip:     'rgba(6,26,16,0.78)'
 };
@@ -532,11 +593,18 @@ function resize(){
   // 只留 60px 下限；真正防止過細嘅係 fitWidth() 內部嘅 120px 寬度下限
   var availH = Math.max(60, vh - chrome - ownPad - 10);
   var cssW = fitWidth(availW, availH, LW, LH);
-  if (Math.abs(cssW - lastW) < 0.6 && cv.width > 0) return;   // 尺寸無變 → 避免迴圈
+  var newDpr = window.devicePixelRatio || 1;
+  // 寬度同 DPR 都無變 → 唔重畫（但 DPR 變咗，例如瀏覽器縮放，就一定要重畫，
+  // 否則視線圖嘅背板尺寸會同 DPR 對唔上，圖會被裁）
+  if (Math.abs(cssW - lastW) < 0.6 && Math.abs(newDpr - dpr) < 1e-6 && cv.width > 0) return;
   lastW = cssW;
+  dpr = newDpr;
 
   var cssH = cssW * LH / LW;
-  dpr = window.devicePixelRatio || 1;
+  // 視線圖（固定 CSS 尺寸，只需要跟 DPR）
+  ivEl.style.width = IV_W + 'px'; ivEl.style.height = IV_H + 'px';
+  ivEl.width = Math.max(1, Math.round(IV_W * dpr));
+  ivEl.height = Math.max(1, Math.round(IV_H * dpr));
   cv.style.width = cssW + 'px';
   cv.style.height = cssH + 'px';
   cv.width = Math.max(1, Math.round(cssW * dpr));
@@ -838,7 +906,59 @@ function render(){
   ctx.textBaseline = 'top';
   ctx.fillText('目標', ox, oy + rr + 4);
 
+  drawAimView(active);
   updateReadout(active, res, bad);
+}
+
+/* ══════════ 視線圖：從白球後面望過去（重疊法） ══════════
+   把兩個球投影到同一個平面：白球圓盤固定在正中（正中就係瞄準線嘅位置），
+   目標球圓盤隨切角向右偏移 2R·sinθ。兩圓重疊嘅闊度 = 2R(1 − sinθ) = 厚度 × 球闊，
+   所以藍色嗰舊就係文章講嘅「重疊部分」。
+   球上嘅橫向刻度尺 = 五分點：由目標球近邊向內每 R/5 一格（5 格 = 一個半徑），
+   5/5 過球心、0 貼住球邊；薄過 30° 就係瞄準線落在球外（刻度伸到球外嗰邊）。 */
+var IV_W = 100, IV_H = 64, IV_R = 16.5, IV_CX = 35, IV_CY = 27;
+var ivEl = document.getElementById('iv'), ivCtx = ivEl.getContext('2d');
+function drawAimView(s){
+  var w = IV_W, h = IV_H, r = IV_R, i;
+  ivCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ivCtx.clearRect(0, 0, w, h);
+  var f = fifthsAt(s.cutDeg), p = f.p;
+  var cy = IV_CY, cxCue = IV_CX, cxObj = IV_CX + p * r;
+  var objCol = BALLS[objBall].c;
+
+  // 目標球圓盤
+  ivCtx.beginPath(); ivCtx.arc(cxObj, cy, r, 0, Math.PI * 2);
+  ivCtx.fillStyle = objCol; ivCtx.fill();
+  ivCtx.lineWidth = 1.2; ivCtx.strokeStyle = outlineFor(objCol); ivCtx.stroke();
+  // 白球圓盤（半透明，重疊部分照樣睇得到目標球）
+  ivCtx.beginPath(); ivCtx.arc(cxCue, cy, r, 0, Math.PI * 2);
+  ivCtx.fillStyle = 'rgba(246,243,232,0.42)'; ivCtx.fill();
+  ivCtx.strokeStyle = SNK.ivory; ivCtx.stroke();
+  // 重疊部分（兩圓交集）
+  ivCtx.save();
+  ivCtx.beginPath(); ivCtx.arc(cxObj, cy, r, 0, Math.PI * 2); ivCtx.clip();
+  ivCtx.beginPath(); ivCtx.arc(cxCue, cy, r, 0, Math.PI * 2);
+  ivCtx.fillStyle = TH.accent; ivCtx.globalAlpha = 0.58; ivCtx.fill();
+  ivCtx.restore();
+  // 瞄準線（視線）＝白球球心嘅垂直線
+  ivCtx.save();
+  ivCtx.setLineDash([3, 3]); ivCtx.lineWidth = 1;
+  ivCtx.strokeStyle = 'rgba(246,243,232,0.8)';
+  ivCtx.beginPath(); ivCtx.moveTo(cxCue, 2); ivCtx.lineTo(cxCue, h - 12); ivCtx.stroke();
+  ivCtx.restore();
+  // 五分點刻度尺（每 R/5 一格，每 5 格加長）
+  for (i = -5; i <= 10; i++){
+    var tx = (cxObj - r) + i * r / 5, big = (i % 5 === 0), len = big ? r * 0.30 : r * 0.15;
+    ivCtx.lineWidth = 2.6; ivCtx.strokeStyle = SNK.ivDark;
+    ivCtx.beginPath(); ivCtx.moveTo(tx, cy - len); ivCtx.lineTo(tx, cy + len); ivCtx.stroke();
+    ivCtx.lineWidth = 1; ivCtx.strokeStyle = SNK.ivTick;
+    ivCtx.beginPath(); ivCtx.moveTo(tx, cy - len); ivCtx.lineTo(tx, cy + len); ivCtx.stroke();
+  }
+  // 讀數（分點）
+  ivCtx.font = '700 11px ' + FONT;
+  ivCtx.fillStyle = SNK.ivory;
+  ivCtx.textAlign = 'left'; ivCtx.textBaseline = 'alphabetic';
+  ivCtx.fillText(f.short, 3, h - 3);
 }
 
 /* ══════════ 讀數 ══════════ */
@@ -849,6 +969,7 @@ function updateReadout(s, res, bad){
 
   document.getElementById('bigThk').textContent =
     Math.round(s.thickness * 100) + '%（' + shotNameApprox(s.cutDeg) + '）';
+  document.getElementById('bigFive').textContent = fifthsAt(s.cutDeg).text;
   document.getElementById('bigAim').textContent = aimText(s.cutDeg);
   document.getElementById('bigPk').textContent = s.pocket.name + (manualPocket >= 0 ? '（鎖定）' : '');
   document.getElementById('bigTan').textContent = '偏' + s.side + ' 90°';
@@ -1198,6 +1319,13 @@ function selftest(){
   var hL = stat(probeOn.hL, probeOff.hL), hC = stat(probeOn.hC, probeOff.hC);
   var ns = function(a){ return a.map(function(p){ return p.n; }); };
   var meanTxt = function(a){ return a.map(function(p){ return p.mean.toFixed(0); }).join('/'); };
+  // 畫布太細（S < 1.8）時，1px 線會被抗鋸齒攤薄，呢啲像素量度就唔再可靠 → 明確略過
+  var pixelOK = (S >= 1.8);
+  if (!pixelOK){
+    out.push('gridPixelV=SKIP');
+    out.push('gridPixelH=SKIP');
+    out.push('gridCenterBrighter=SKIP');
+  }
   // 格線：整條線有大約一半取樣點「有線」（虛線 9 亮 8 暗 → 約 53%）
   var mnv = Math.min.apply(null, vL.map(function(p){ return p.frac; }));
   var mnh = Math.min.apply(null, hL.map(function(p){ return p.frac; }));
@@ -1205,6 +1333,7 @@ function selftest(){
   var mxv = Math.max.apply(null, vC.map(function(p){ return p.frac; }));
   var mxh = Math.max.apply(null, hC.map(function(p){ return p.frac; }));
   var pct = function(a){ return a.map(function(p){ return (p.frac * 100).toFixed(1) + '%'; }).join('/'); };
+  if (pixelOK){
   ok('gridPixelV（5 條直格線都畫到，格中心無線）', mnv > 0.30 && mxv < 0.08 && mnv > 3 * mxv,
      '格線有線比例 ' + pct(vL) + '　格中心 ' + pct(vC) + '　平均對比 ' + meanTxt(vL));
   ok('gridPixelH（3 條橫格線都畫到，格中心無線）', mnh > 0.30 && mxh < 0.08 && mnh > 3 * mxh,
@@ -1213,6 +1342,20 @@ function selftest(){
   ok('gridCenterBrighter（穿過色球原位嘅中心線明顯較亮）',
      vL[2].mean > otherMean + 20,
      '中心線平均對比 ' + vL[2].mean.toFixed(0) + '　普通格線 ' + otherMean.toFixed(0));
+  }   // if (pixelOK)
+
+  // 重疊法／五分點（知乎《台球重叠法瞄准角度对照表》）
+  ok('fiveReadout', /\/5|貼住球邊/.test(document.getElementById('bigFive').textContent),
+     document.getElementById('bigFive').textContent);
+  ok('overlap30=50%', Math.abs(overlapPct(30) - 50) < 1e-12);
+  ok('fifthsAnchors', FIFTH_ANCHORS.every(function(a){
+     var f2 = fifthsAt(a[1]); return f2.k === a[0] && f2.short === a[2]; }));
+  ok('fifthsPerStep10%', FIFTH_ANCHORS.every(function(a, i){
+     return Math.abs(overlapPct(a[1]) - (100 - i * 10)) < 0.01; }));
+  // 視線圖：真係有畫嘢（唔係空 canvas）
+  var ivpx = ivCtx.getImageData(0, 0, ivEl.width, ivEl.height).data, ivInk = 0, q;
+  for (q = 3; q < ivpx.length; q += 4) if (ivpx[q] > 0) ivInk++;
+  ok('aimViewDrawn', ivInk > 300 && ivEl.width > 0, '有顏色像素 ' + ivInk + ' / 畫布 ' + ivEl.width + 'x' + ivEl.height);
   for (kk in opts) opts[kk] = keepO[kk];               // 還原
   cue.x = keepCue.x; cue.y = keepCue.y; obj.x = keepObj.x; obj.y = keepObj.y;
   render();
