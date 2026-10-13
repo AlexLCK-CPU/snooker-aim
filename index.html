@@ -170,6 +170,14 @@
     .status{display:none}
     details.ref{display:none}
   }
+  /* ── 窄螢幕（手機直向）：收起次要讀數（瞄準點／橫移／目標袋／撞後），
+       保留切角、厚度、五分點，騰出高度俾張枱（resize() 會自動量到新高度） ── */
+  @media (max-width: 700px){
+    .hudR .sec{display:none}
+    .hud{gap:10px}
+    .bar{margin-bottom:4px}
+    .bar button{padding:3px 7px;font-size:11px;border-radius:6px}
+  }
 </style>
 </head>
 <body>
@@ -188,10 +196,10 @@
     <div class="hudR">
       <div class="row"><span class="k2">擊球厚度</span><b id="bigThk">–</b></div>
       <div class="row"><span class="k2">五分點</span><b id="bigFive">–</b></div>
-      <div class="row"><span class="k2">瞄準點</span><b id="bigAim">–</b></div>
-      <div class="row"><span class="k2">瞄準線橫移</span><b id="bigShift">–</b></div>
-      <div class="row"><span class="k2">目標袋</span><b id="bigPk">–</b></div>
-      <div class="row"><span class="k2">白球撞後</span><b id="bigTan">–</b></div>
+      <div class="row sec"><span class="k2">瞄準點</span><b id="bigAim">–</b></div>
+      <div class="row sec"><span class="k2">瞄準線橫移</span><b id="bigShift">–</b></div>
+      <div class="row sec"><span class="k2">目標袋</span><b id="bigPk">–</b></div>
+      <div class="row sec"><span class="k2">白球撞後</span><b id="bigTan">–</b></div>
     </div>
     <div class="ivBox">
       <canvas id="iv"></canvas>
@@ -1687,6 +1695,27 @@ function selftest(){
   var docH = document.documentElement.scrollHeight;
   ok('wholeTableFits', docH <= window.innerHeight + 2 && cv.getBoundingClientRect().bottom <= window.innerHeight + 1,
      'doc=' + docH + ' vh=' + window.innerHeight + ' canvasBottom=' + Math.round(cv.getBoundingClientRect().bottom));
+
+  /* 窄螢幕：次要讀數收起 → 畫布要即刻變大（resize() 會重新量 chrome 高度） */
+  if (window.innerWidth <= 700){
+    var secRows = [].slice.call(document.querySelectorAll('.hudR .sec'));
+    ok('compactHudRowsHidden',
+       secRows.length === 4 && secRows.every(function(el){ return el.offsetParent === null; }),
+       secRows.length + ' 行次要讀數已收起（瞄準點／橫移／目標袋／撞後）');
+    var hCompact = cv.height / dpr;
+    secRows.forEach(function(el){ el.style.display = 'flex'; });
+    resize();
+    var hFull = cv.height / dpr;
+    secRows.forEach(function(el){ el.style.display = ''; });
+    resize();
+    ok('compactHudBigger', hCompact > hFull + 5,
+       '畫布高：精簡 ' + Math.round(hCompact) + 'px vs 全顯示 ' + Math.round(hFull) + 'px（+' +
+       Math.round((hCompact / hFull - 1) * 100) + '%）');
+    ok('compactHudRestored', Math.abs(cv.height / dpr - hCompact) < 2,
+       '還原後 ' + Math.round(cv.height / dpr) + 'px');
+  } else {
+    out.push('compactHud=SKIP（闊螢幕唔會收起）');
+  }
 
   // ── 用畫布像素證明「24 格格網真係畫咗出嚟」（唔只係計得對）──
   // 做法：暫時關掉所有輔助線、兩球讓去角落，令畫面只剩下格網；
