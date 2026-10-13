@@ -221,6 +221,7 @@
     <button id="bStick" class="on">球桿</button>
     <button id="bTang">90° 切線</button>
     <button id="bLines">各袋連線</button>
+    <button id="bSplit" class="on">雙視角</button>
     <span class="sp"></span>
     <button id="bFull">全螢幕</button>
     <button id="bReset">重設</button>
@@ -424,6 +425,79 @@ var FIFTH_ANCHORS = [
 function shiftMM(deg){ return 2 * R_BALL * 25.4 * Math.sin(deg * Math.PI / 180); }
 function shiftBalls(deg){ return Math.sin(deg * Math.PI / 180); }
 
+/* ══════════ 第一人稱（透視）相機 ══════════
+   由白球後方 FP_BACK 吋、眼高 FP_EYE_H 吋（＝真人落低身瞄波嘅高度）望過去，
+   視線望向白球前面 18~40 吋嘅假想球（會微微俯視，白球同遠袋口都留在畫面內）。
+   呢段係純數學（無 canvas），方便獨立測試；繪圖喺 drawFirstPerson()。 */
+var FP_EYE_H = 12;      // 眼高（吋，離絨布）——真人落低身瞄波，眼差不多貼住支桿
+var FP_BACK  = 13;      // 企喺白球後面幾遠（吋）
+var FP_LOOK_MIN = 18, FP_LOOK_MAX = 40;   // 視線落點：白球前面幾遠（夾住，太遠太近都唔好睇）
+var FP_FOVY  = 68;      // 垂直視角（度）——真人第一人稱係廣角，先裝得落近嘅白球
+
+function fpCross(a, b){
+  return { x: a.y * b.z - a.z * b.y, y: a.z * b.x - a.x * b.z, z: a.x * b.y - a.y * b.x };
+}
+function fpDot(a, b){ return a.x * b.x + a.y * b.y + a.z * b.z; }
+function fpNorm(a){ var d = Math.hypot(a.x, a.y, a.z) || 1; return { x: a.x / d, y: a.y / d, z: a.z / d }; }
+
+/* 相機：eye（世界座標，z = 離絨布高度）＋ 正交基 right/up/fwd。
+   lookDist = 望向白球前面幾遠（通常傳白球到假想球嘅距離；會夾在 MIN/MAX 之間，
+   令近嘅白球同遠嘅袋口都留在畫面內）。 */
+function fpCamera(cue, toG, lookDist){
+  var d = lookDist || 26;
+  if (!(d > 0)) d = 26;
+  if (d < FP_LOOK_MIN) d = FP_LOOK_MIN;
+  if (d > FP_LOOK_MAX) d = FP_LOOK_MAX;
+  var eye  = { x: cue.x - toG.x * FP_BACK, y: cue.y - toG.y * FP_BACK, z: FP_EYE_H };
+  var look = { x: cue.x + toG.x * d, y: cue.y + toG.y * d, z: R_BALL };
+  var fwd   = fpNorm({ x: look.x - eye.x, y: look.y - eye.y, z: look.z - eye.z });
+  var right = fpNorm(fpCross(fwd, { x: 0, y: 0, z: 1 }));
+  var up    = fpCross(right, fwd);
+  return { eye: eye, fwd: fwd, right: right, up: up, look: look };
+}
+/* 世界點 → 相機座標（Z = 沿視線嘅深度；Z <= 0.5 吋 = 喺鏡頭後面／太近） */
+function fpView(cam, x, y, z){
+  var v = { x: x - cam.eye.x, y: y - cam.eye.y, z: z - cam.eye.z };
+  return { X: fpDot(v, cam.right), Y: fpDot(v, cam.up), Z: fpDot(v, cam.fwd) };
+}
+/* 相機座標 → 畫布像素（cx, cy = 該帶嘅中心；Z 太細回 null） */
+function fpScreen(v, focal, cx, cy){
+  if (v.Z <= 0.5) return null;
+  return { x: cx + focal * v.X / v.Z, y: cy - focal * v.Y / v.Z, Z: v.Z };
+}
+/* 由帶嘅高度（像素）算出焦距 */
+function fpFocalPx(bandPx){ return bandPx / (2 * Math.tan(FP_FOVY * Math.PI / 360)); }
+
+/* 近平面裁剪：相機企喺枱邊上方，一定有一部分枱面喺鏡頭後面，
+   所以投影之前要按 Z >= FP_ZNEAR 裁剪，否則成塊四邊形會被丟棄。 */
+var FP_ZNEAR = 1.0;
+function fpClipPoly(cam, pts){
+  var i, a, b, t, out = [], cp = [];
+  for (i = 0; i < pts.length; i++) cp.push(fpView(cam, pts[i][0], pts[i][1], pts[i][2]));
+  for (i = 0; i < cp.length; i++){
+    a = cp[i]; b = cp[(i + 1) % cp.length];
+    var aIn = a.Z >= FP_ZNEAR, bIn = b.Z >= FP_ZNEAR;
+    if (aIn) out.push(a);
+    if (aIn !== bIn){
+      t = (FP_ZNEAR - a.Z) / (b.Z - a.Z);
+      out.push({ X: a.X + (b.X - a.X) * t, Y: a.Y + (b.Y - a.Y) * t, Z: FP_ZNEAR });
+    }
+  }
+  return out;
+}
+function fpClipSeg(cam, p1, p2){
+  var t, a = fpView(cam, p1[0], p1[1], p1[2]), b = fpView(cam, p2[0], p2[1], p2[2]);
+  if (a.Z < FP_ZNEAR && b.Z < FP_ZNEAR) return null;
+  if (a.Z < FP_ZNEAR){
+    t = (FP_ZNEAR - a.Z) / (b.Z - a.Z);
+    a = { X: a.X + (b.X - a.X) * t, Y: a.Y + (b.Y - a.Y) * t, Z: FP_ZNEAR };
+  } else if (b.Z < FP_ZNEAR){
+    t = (FP_ZNEAR - b.Z) / (a.Z - b.Z);
+    b = { X: b.X + (a.X - b.X) * t, Y: b.Y + (a.Y - b.Y) * t, Z: FP_ZNEAR };
+  }
+  return [a, b];
+}
+
 /* 檯面均分格線：GRID_COLS × GRID_ROWS = 6 × 4 = 24 格，24 格全部一樣大。
    用途：唔靠感覺，直接數格估距離／位置。
    長邊 140.5 ÷ 6 = 23.417″、短邊 70 ÷ 4 = 17.5″。
@@ -491,7 +565,10 @@ function aimText(deg){
 /* ══════════ 檯面 ══════════ */
 var RAIL = 5;
 var LW = TBL.w + RAIL * 2;
-var LH = TBL.h + RAIL * 2;
+var LH_BASE = TBL.h + RAIL * 2;      // 俯視（第三人稱）檯面本身嘅高度（邏輯單位）
+var FP_U = 62;                       // 「第一人稱」帶嘅高度（邏輯單位）
+var LH = LH_BASE;                    // 畫布總高：雙視角時 = FP_U + LH_BASE
+var Y0 = 0;                          // 俯視帶向下偏移（雙視角時上面留俾第一人稱）
 var POCKET_R = 3.0;
 var MX = TBL.w / 2, MY = TBL.h / 2;
 
@@ -510,7 +587,8 @@ var obj = { x: START.obj.x, y: START.obj.y };
 var manualPocket = -1;
 
 var opts = { ghost: true, center: true, arc: true, guide: true, spots: true,
-             tangent: false, lines: false, stick: true, auto: true };
+             tangent: false, lines: false, stick: true, auto: true,
+             split: (typeof window !== 'undefined' && window.innerHeight >= 620) };
 var AIM_ALPHA = 0.5;   // 主球瞄副球那條線的半透明度（1 = 全不透明）
 
 /* ══════════ Snooker 配色 ══════════ */
@@ -588,9 +666,9 @@ var ctx = cv.getContext('2d');
 var dpr = 1, S = 1, shot = null;
 
 function X(tx){ return (RAIL + tx) * S; }
-function Y(ty){ return (RAIL + ty) * S; }
+function Y(ty){ return Y0 + (RAIL + ty) * S; }
 
-var lastW = -1;
+var lastW = -1, lastSplit = null;
 /* 畫布尺寸：寬度跟面板，但高度不得超出可視範圍 → 整張枱連控件可以一次過睇完 */
 function resize(){
   var wrap = cv.parentElement;
@@ -608,14 +686,18 @@ function resize(){
   // 自己的上下內距（iOS standalone 的 safe-area）都要扣
   var wrapCS = getComputedStyle(wrap);
   var ownPad = (parseFloat(wrapCS.paddingTop) || 0) + (parseFloat(wrapCS.paddingBottom) || 0);
+  // 雙視角：畫布總高 = 第一人稱帶 + 俯視檯面
+  LH = opts.split ? LH_BASE + FP_U : LH_BASE;
   // 只留 60px 下限；真正防止過細嘅係 fitWidth() 內部嘅 120px 寬度下限
   var availH = Math.max(60, vh - chrome - ownPad - 10);
   var cssW = fitWidth(availW, availH, LW, LH);
   var newDpr = window.devicePixelRatio || 1;
-  // 寬度同 DPR 都無變 → 唔重畫（但 DPR 變咗，例如瀏覽器縮放，就一定要重畫，
+  // 寬度、DPR、雙視角狀態都無變 → 唔重畫（DPR 變咗，例如瀏覽器縮放，就一定要重畫，
   // 否則視線圖嘅背板尺寸會同 DPR 對唔上，圖會被裁）
-  if (Math.abs(cssW - lastW) < 0.6 && Math.abs(newDpr - dpr) < 1e-6 && cv.width > 0) return;
+  if (Math.abs(cssW - lastW) < 0.6 && Math.abs(newDpr - dpr) < 1e-6 &&
+      opts.split === lastSplit && cv.width > 0) return;
   lastW = cssW;
+  lastSplit = opts.split;
   dpr = newDpr;
 
   var cssH = cssW * LH / LW;
@@ -628,6 +710,7 @@ function resize(){
   cv.width = Math.max(1, Math.round(cssW * dpr));
   cv.height = Math.max(1, Math.round(cssH * dpr));
   S = cssW / LW;
+  Y0 = opts.split ? FP_U * S : 0;      // 雙視角：俯視帶推落第一人稱帶之下
   render();
 }
 
@@ -669,21 +752,24 @@ function render(){
   var px = X(active.pocket.x), py = Y(active.pocket.y);
   var bad = !active.feasible;
 
+  /* ── 雙視角：上面第一人稱（相機跟住瞄準線／支桿） ── */
+  if (opts.split) drawFirstPerson(FP_U * S, active);
+
   /* ── 木框 ── */
-  var wg = ctx.createLinearGradient(0, 0, 0, LH * S);
+  var wg = ctx.createLinearGradient(0, Y0, 0, Y0 + LH_BASE * S);
   wg.addColorStop(0, SNK.woodHi); wg.addColorStop(0.5, SNK.wood); wg.addColorStop(1, SNK.woodLo);
-  roundRect(0, 0, LW * S, LH * S, 9 * S);
+  roundRect(0, Y0, LW * S, LH_BASE * S, 9 * S);
   ctx.fillStyle = wg; ctx.fill();
 
   /* ── 綠絨布 ── */
-  var bg = ctx.createRadialGradient(LW * S / 2, LH * S / 2, 10 * S,
-                                    LW * S / 2, LH * S / 2, Math.max(LW, LH) * S * 0.62);
+  var bg = ctx.createRadialGradient(LW * S / 2, Y0 + LH_BASE * S / 2, 10 * S,
+                                    LW * S / 2, Y0 + LH_BASE * S / 2, Math.max(LW, LH_BASE) * S * 0.62);
   bg.addColorStop(0, SNK.clothIn); bg.addColorStop(1, SNK.clothOut);
-  roundRect(RAIL * S, RAIL * S, TBL.w * S, TBL.h * S, 3 * S);
+  roundRect(RAIL * S, Y0 + RAIL * S, TBL.w * S, TBL.h * S, 3 * S);
   ctx.fillStyle = bg; ctx.fill();
   // 枕邊（比檯面深一點）
   set(2.2 * S, SNK.cushion);
-  roundRect(RAIL * S, RAIL * S, TBL.w * S, TBL.h * S, 3 * S); ctx.stroke();
+  roundRect(RAIL * S, Y0 + RAIL * S, TBL.w * S, TBL.h * S, 3 * S); ctx.stroke();
 
   /* ── 英式檯記號：baulk 線 + D ── */
   set(Math.max(1, 1.1 * S), SNK.mark, [5 * S, 4 * S]);
@@ -924,8 +1010,176 @@ function render(){
   ctx.textBaseline = 'top';
   ctx.fillText('目標', ox, oy + rr + 4);
 
+  /* ── 雙視角：下面帶嘅標籤 ── */
+  if (opts.split){
+    var fs2 = Math.max(10, 12.5 * S), lab2 = '第三人稱（俯視）';
+    ctx.setLineDash([]);
+    ctx.font = '600 ' + fs2.toFixed(1) + 'px ' + FONT;
+    ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+    var tw2 = ctx.measureText(lab2).width;
+    ctx.fillStyle = 'rgba(0,0,0,0.42)';
+    ctx.fillRect(0, Y0, tw2 + 12, fs2 * 1.45);
+    ctx.fillStyle = SNK.ivory;
+    ctx.fillText(lab2, 6, Y0 + fs2 * 0.22);
+  }
+
   drawAimView(active);
   updateReadout(active, res, bad);
+}
+
+/* ══════════ 第一人稱（透視）視圖 ══════════
+   真透視投影：絨布、枕邊、木框、袋口、色球、瞄準線、假想球全部按深度畫（近大遠細）。
+   相機跟住瞄準線 → 拖白球（＝移動支桿）上下兩邊視圖一齊變。 */
+var CUSH_H = 1.7;         // 枕邊高（吋）
+function drawFirstPerson(bandPx, s){
+  var i, w = LW * S;
+  var focal = fpFocalPx(bandPx);
+  var cxm = w / 2, cym = bandPx / 2;
+  var cam = fpCamera(cue, s.toG, s.cueToGhost);
+
+  function P(x, y, z){ return fpScreen(fpView(cam, x, y, z), focal, cxm, cym); }
+  /* 世界點（[x,y,z]，裁剪過）→ 填色多邊形 */
+  function polyW(pts, fill, stroke, lw){
+    var pr = fpClipPoly(cam, pts), k, sc;
+    if (pr.length < 3) return false;
+    ctx.beginPath();
+    for (k = 0; k < pr.length; k++){
+      sc = fpScreen(pr[k], focal, cxm, cym);
+      if (!sc) return false;
+      if (k === 0) ctx.moveTo(sc.x, sc.y); else ctx.lineTo(sc.x, sc.y);
+    }
+    ctx.closePath();
+    if (fill){ ctx.fillStyle = fill; ctx.fill(); }
+    if (stroke){ ctx.lineWidth = lw || 1; ctx.strokeStyle = stroke; ctx.stroke(); }
+    return true;
+  }
+  /* 世界線段（裁剪過） */
+  function segW(p1, p2, col, lw, dash){
+    var s2 = fpClipSeg(cam, p1, p2), A, B;
+    if (!s2) return;
+    A = fpScreen(s2[0], focal, cxm, cym); B = fpScreen(s2[1], focal, cxm, cym);
+    if (!A || !B) return;
+    ctx.setLineDash(dash || []);
+    ctx.lineWidth = lw; ctx.strokeStyle = col;
+    ctx.beginPath(); ctx.moveTo(A.x, A.y); ctx.lineTo(B.x, B.y); ctx.stroke();
+    ctx.setLineDash([]);
+  }
+  function dot(c, r, fill, stroke, lw, dash){
+    if (!c) return;
+    ctx.setLineDash(dash || []);
+    ctx.beginPath(); ctx.arc(c.x, c.y, Math.max(0.4, r), 0, Math.PI * 2);
+    if (fill){ ctx.fillStyle = fill; ctx.fill(); }
+    if (stroke){ ctx.lineWidth = lw || 1; ctx.strokeStyle = stroke; ctx.stroke(); }
+    ctx.setLineDash([]);
+  }
+
+  /* 背景（房間） */
+  var bgg = ctx.createLinearGradient(0, 0, 0, bandPx);
+  bgg.addColorStop(0, '#0b0e12'); bgg.addColorStop(0.74, '#141a21'); bgg.addColorStop(1, '#1c242d');
+  ctx.fillStyle = bgg; ctx.fillRect(0, 0, w, bandPx);
+
+  /* 木框外沿 */
+  polyW([[-RAIL, -RAIL, CUSH_H], [TBL.w + RAIL, -RAIL, CUSH_H],
+         [TBL.w + RAIL, TBL.h + RAIL, CUSH_H], [-RAIL, TBL.h + RAIL, CUSH_H]], SNK.wood, null);
+  /* 枕邊頂面 */
+  polyW([[0, 0, CUSH_H], [TBL.w, 0, CUSH_H], [TBL.w, TBL.h, CUSH_H], [0, TBL.h, CUSH_H]],
+        SNK.cushion, null);
+  /* 枕邊內側（四面） */
+  var walls = [[0, 0, TBL.w, 0], [TBL.w, 0, TBL.w, TBL.h], [TBL.w, TBL.h, 0, TBL.h], [0, TBL.h, 0, 0]];
+  for (i = 0; i < 4; i++){
+    var wl = walls[i];
+    polyW([[wl[0], wl[1], CUSH_H], [wl[2], wl[3], CUSH_H], [wl[2], wl[3], 0], [wl[0], wl[1], 0]],
+          'rgba(4,44,25,0.96)', null);
+  }
+  /* 絨布 */
+  var clothOK = polyW([[0, 0, 0], [TBL.w, 0, 0], [TBL.w, TBL.h, 0], [0, TBL.h, 0]], SNK.clothIn, null);
+  /* 24 格參考線（透視版） */
+  if (clothOK && opts.guide){
+    var grd = tableGrid(), dash = [6 * S, 5 * S], glw = Math.max(1, 0.9 * S);
+    for (i = 0; i < grd.v.length; i++) segW([grd.v[i], 0, 0], [grd.v[i], TBL.h, 0], SNK.guide, glw, dash);
+    for (i = 0; i < grd.h.length; i++) segW([0, grd.h[i], 0], [TBL.w, grd.h[i], 0], SNK.guide, glw, dash);
+  }
+  /* 袋口 */
+  for (i = 0; i < POCKETS.length; i++){
+    var pc = P(POCKETS[i].x, POCKETS[i].y, 0);
+    if (!pc) continue;
+    var pr = Math.max(1.2, POCKET_R * focal / pc.Z);
+    dot(pc, pr, SNK.pocket, POCKETS[i] === s.pocket ? TH.accent : 'rgba(0,0,0,0.5)',
+        Math.max(1, pr * 0.16), []);
+  }
+  /* 輔助線（畫喺波之下） */
+  if (opts.center){
+    var back = Math.min(exitDist(obj.x, obj.y, -s.toP.x, -s.toP.y), 48);
+    segW([obj.x, obj.y, 0], [obj.x - s.toP.x * back, obj.y - s.toP.y * back, 0],
+         SNK.mark, Math.max(1, 1.2 * S), [5 * S, 4 * S]);
+  }
+  segW([obj.x, obj.y, 0], [s.pocket.x, s.pocket.y, 0],
+       s.feasible ? SNK.mark : TH.danger, Math.max(1, 1.2 * S), [5 * S, 4 * S]);
+  segW([cue.x, cue.y, R_BALL], [s.ghost.x, s.ghost.y, R_BALL],
+       withAlpha(TH.accent, AIM_ALPHA), Math.max(1.4, 1.7 * S), []);
+  /* 假想球 ＋ 光柱 */
+  var gC = P(s.ghost.x, s.ghost.y, R_BALL), gT = P(s.ghost.x, s.ghost.y, R_BALL + 9);
+  var gB = P(s.ghost.x, s.ghost.y, 0);
+  if (gC){
+    var gr = R_BALL * focal / gC.Z;
+    if (gB && gT){
+      ctx.beginPath();
+      ctx.moveTo(gB.x - gr * 0.55, gB.y); ctx.lineTo(gB.x + gr * 0.55, gB.y);
+      ctx.lineTo(gT.x + gr * 0.55, gT.y); ctx.lineTo(gT.x - gr * 0.55, gT.y);
+      ctx.closePath();
+      ctx.fillStyle = 'rgba(246,243,232,0.10)'; ctx.fill();
+      segW([s.ghost.x, s.ghost.y, 0], [s.ghost.x, s.ghost.y, R_BALL + 9],
+           'rgba(246,243,232,0.5)', Math.max(1, 1 * S), [4 * S, 4 * S]);
+    }
+    dot(gC, gr, 'rgba(246,243,232,0.20)', 'rgba(246,243,232,0.85)', Math.max(1, 1.2 * S), [4 * S, 3 * S]);
+  }
+  /* 球桿（由鏡頭下方伸出） */
+  if (opts.stick){
+    var pd = { x: -s.toG.y, y: s.toG.x };
+    var tl = { x: cue.x - s.toG.x * 7.5, y: cue.y - s.toG.y * 7.5 };
+    var tp = { x: cue.x - s.toG.x * 1.8, y: cue.y - s.toG.y * 1.8 };
+    var A1 = P(tl.x + pd.x * 0.42, tl.y + pd.y * 0.42, R_BALL);
+    var A2 = P(tl.x - pd.x * 0.42, tl.y - pd.y * 0.42, R_BALL);
+    var B1 = P(tp.x + pd.x * 0.22, tp.y + pd.y * 0.22, R_BALL);
+    var B2 = P(tp.x - pd.x * 0.22, tp.y - pd.y * 0.22, R_BALL);
+    if (A1 && A2 && B1 && B2){
+      ctx.beginPath();
+      ctx.moveTo(A1.x, A1.y); ctx.lineTo(A2.x, A2.y); ctx.lineTo(B2.x, B2.y); ctx.lineTo(B1.x, B1.y);
+      ctx.closePath();
+      ctx.fillStyle = '#c9a267'; ctx.fill();
+      ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(0,0,0,0.35)'; ctx.stroke();
+    }
+  }
+  /* 球（遠 → 近） */
+  var list = [{ x: cue.x, y: cue.y, c: SNK.ivory }, { x: obj.x, y: obj.y, c: BALLS[objBall].c }];
+  if (opts.spots){
+    var sp3 = snookerSpots();
+    for (i = 0; i < sp3.length; i++) list.push({ x: sp3[i].x, y: sp3[i].y, c: sp3[i].c });
+  }
+  for (i = 0; i < list.length; i++) list[i].v = fpView(cam, list[i].x, list[i].y, R_BALL);
+  list.sort(function(a, b){ return b.v.Z - a.v.Z; });
+  for (i = 0; i < list.length; i++){
+    var bl = list[i], bp = fpScreen(bl.v, focal, cxm, cym);
+    if (!bp) continue;
+    var br = Math.max(0.8, R_BALL * focal / bp.Z);
+    var bs = P(bl.x, bl.y, 0);
+    if (bs) dot(bs, br * 1.05, 'rgba(0,0,0,0.30)', null, 0, []);
+    var bg2 = ctx.createRadialGradient(bp.x - br * 0.35, bp.y - br * 0.4, br * 0.08, bp.x, bp.y, br);
+    bg2.addColorStop(0, '#ffffff'); bg2.addColorStop(0.42, bl.c); bg2.addColorStop(1, 'rgba(0,0,0,0.6)');
+    dot(bp, br, bg2, 'rgba(0,0,0,0.35)', Math.max(0.6, br * 0.07), []);
+  }
+  /* 標籤 + 分隔線 */
+  ctx.setLineDash([]);
+  ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+  ctx.beginPath(); ctx.moveTo(0, bandPx - 0.5); ctx.lineTo(w, bandPx - 0.5); ctx.stroke();
+  var fs = Math.max(9.5, 12 * S), lab = '第一人稱（瞄準線）';
+  ctx.font = '600 ' + fs.toFixed(1) + 'px ' + FONT;
+  ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+  var tw = ctx.measureText(lab).width;
+  ctx.fillStyle = 'rgba(0,0,0,0.45)';
+  ctx.fillRect(0, 0, tw + 12, fs * 1.5);
+  ctx.fillStyle = SNK.ivory;
+  ctx.fillText(lab, 6, fs * 0.25);
 }
 
 /* ══════════ 視線圖：從白球後面望過去（重疊法） ══════════
@@ -1078,6 +1332,18 @@ function tog(id, key){
 tog('bGhost', 'ghost'); tog('bCenter', 'center'); tog('bArc', 'arc');
 tog('bGuide', 'guide'); tog('bSpots', 'spots');
 tog('bTang', 'tangent'); tog('bLines', 'lines'); tog('bStick', 'stick');
+
+/* 雙視角：上面第一人稱（跟住瞄準線）＋下面第三人稱（俯視）。
+   開關會改變畫布總高，所以要行 resize() 而唔係單純 render()。 */
+(function(){
+  var el = document.getElementById('bSplit');
+  el.classList.toggle('on', opts.split);
+  el.addEventListener('click', function(){
+    opts.split = !opts.split;
+    el.classList.toggle('on', opts.split);
+    resize();
+  });
+})();
 
 document.getElementById('bReset').addEventListener('click', function(){
   cue.x = START.cue.x; cue.y = START.cue.y;
@@ -1399,6 +1665,49 @@ function selftest(){
   for (kk in opts) opts[kk] = keepO[kk];               // 還原
   cue.x = keepCue.x; cue.y = keepCue.y; obj.x = keepObj.x; obj.y = keepObj.y;
   render();
+
+  /* ── 雙視角（要喺還原之後量：上面像素測試期間所有選項都暫時關咗）── */
+  if (opts.split){
+    var bandPx2 = Math.max(1, Math.min(Math.round(FP_U * S * dpr), cv.height));
+    var bimg = ctx.getImageData(0, 0, cv.width, bandPx2).data;
+    var bgreen = 0, blight = 0, btot = bimg.length / 4, q3;
+    for (q3 = 0; q3 < bimg.length; q3 += 4){
+      var br2 = bimg[q3], bg3 = bimg[q3 + 1], bb2 = bimg[q3 + 2];
+      if (bg3 > br2 + 14 && bg3 > bb2 + 14) bgreen++;
+      if (br2 > 185 && bg3 > 185 && bb2 > 175) blight++;
+    }
+    ok('firstPersonDrawn', bgreen > btot * 0.10 && blight > 20,
+       '絨布 ' + (bgreen / btot * 100).toFixed(1) + '%　白球像素 ' + blight + '　帶高 ' + bandPx2 + 'px');
+    // 取景：白球要喺下半、目標球要喺上半（唔可以跌出畫面）
+    var cam2 = fpCamera(cue, shot.toG, shot.cueToGhost), foc2 = fpFocalPx(bandPx2);
+    var cy2 = bandPx2 / 2, cx2 = cv.width / 2;
+    var pCue2 = fpScreen(fpView(cam2, cue.x, cue.y, R_BALL), foc2, cx2, cy2);
+    var pObj2 = fpScreen(fpView(cam2, obj.x, obj.y, R_BALL), foc2, cx2, cy2);
+    var pPk2 = fpScreen(fpView(cam2, shot.pocket.x, shot.pocket.y, 0), foc2, cx2, cy2);
+    ok('firstPersonFraming', !!pCue2 && !!pObj2 &&
+       pCue2.y > cy2 * 0.75 && pCue2.y < bandPx2 && pObj2.y > 0 && pObj2.y < cy2 * 1.25 &&
+       Math.abs(pCue2.x - cx2) < cv.width * 0.22 && Math.abs(pObj2.x - cx2) < cv.width * 0.22,
+       '白球 (' + Math.round(pCue2.x / cv.width * 100) + '%,' + Math.round(pCue2.y / bandPx2 * 100) + '%)' +
+       '／目標球 (' + Math.round(pObj2.x / cv.width * 100) + '%,' + Math.round(pObj2.y / bandPx2 * 100) + '%)' +
+       '／袋口 (' + Math.round(pPk2.x / cv.width * 100) + '%,' + Math.round(pPk2.y / bandPx2 * 100) + '%)' +
+       '（x% 由左、y% 由上）');
+  } else {
+    out.push('firstPersonDrawn=SKIP（此尺寸雙視角自動關）');
+  }
+  ok('splitMode', opts.split === (window.innerHeight >= 620),
+     '雙視角=' + opts.split + '　vh=' + window.innerHeight);
+  // 雙視角開關：撳一下畫布長寬比要跟住變（會行 resize）
+  {
+    var spBefore = opts.split, ar0 = cv.width / Math.max(1, cv.height);
+    document.getElementById('bSplit').click();
+    var ar1 = cv.width / Math.max(1, cv.height);
+    ok('splitToggle', Math.abs(ar1 - ar0) > 0.1 && opts.split !== spBefore,
+       'split ' + spBefore + '→' + opts.split + '　長寬比 ' + ar0.toFixed(2) + '→' + ar1.toFixed(2));
+    document.getElementById('bSplit').click();          // 還原
+    var ar2 = cv.width / Math.max(1, cv.height);
+    ok('splitRestore', Math.abs(ar2 - ar0) < 0.05 && opts.split === spBefore,
+       '長寬比 ' + ar0.toFixed(2) + '→' + ar2.toFixed(2) + '　split=' + opts.split);
+  }
 
   // 瞄準線橫移（微信影片）＋ 影片情景預設
   ok('shiftReadout', /mm/.test(document.getElementById('bigShift').textContent),
