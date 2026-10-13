@@ -189,6 +189,7 @@
       <div class="row"><span class="k2">擊球厚度</span><b id="bigThk">–</b></div>
       <div class="row"><span class="k2">五分點</span><b id="bigFive">–</b></div>
       <div class="row"><span class="k2">瞄準點</span><b id="bigAim">–</b></div>
+      <div class="row"><span class="k2">瞄準線橫移</span><b id="bigShift">–</b></div>
       <div class="row"><span class="k2">目標袋</span><b id="bigPk">–</b></div>
       <div class="row"><span class="k2">白球撞後</span><b id="bigTan">–</b></div>
     </div>
@@ -204,6 +205,7 @@
     <button class="angBtn" data-ang="30">30°</button>
     <button class="angBtn" data-ang="45">45°</button>
     <button class="angBtn" data-ang="60">60°</button>
+    <button id="bPink" title="影片情景：粉球 → 下中袋，切角 16.7°（橫移 15.1 mm）">粉球中袋</button>
     <span class="sp"></span>
     <span class="lbl">目標球</span>
     <span id="swWrap"></span>
@@ -253,6 +255,12 @@
       刻度唔係等分度數（因為 sin 唔係直線）：0°、5.7°、11.5°、17.5°、23.6°、30°、36.9°、44.4°、53.1°、64.2°。
       即係文章講嘅「30° 內約每 6° 一格，30° 外每 7~11° 一格」。<br>
       <b>加一法則</b>（文章嘅經驗值）：要打 1/4 球（≈48.6°）時，可以由球邊再向外推約一個「球皮」嘅距離去瞄。<br>
+      <b>瞄準線橫移</b>（來源：微信視頻號《斯諾克-粉球中袋：角度瞄準法》）＝ 假想球同目標球球心之間嘅橫向距離 =
+      <b>2R·sin θ</b>，亦就係「平移法」要將瞄準線推開幾遠。影片例子：切角 16.7° → 橫移 <b>15.1 mm</b>
+      （本程式算 15.09 mm，對得上）。按「<b>粉球中袋</b>」掣會還原影片嗰個情景。<br>
+      <b>單位小提示</b>：影片封面寫嘅「厚度 1/4–3/8 球」對應佢 banner「正45°→反40°」
+      （1−sin45°＝29.3%、1−sin40°＝35.7%），同本程式「擊球厚度」同一把尺；
+      但讀數欄「橫移（X 球）」係另一種講法（橫移 ÷ 球直徑 = sin θ），兩者唔好混淆。<br>
       右上角<b>「從白球後面望」</b>個圖就係重疊法嘅眼睇畫面：白 = 白球、彩色 = 目標球、藍 = 兩球重疊（＝厚度）；
       橫尺係五分點，虛線係瞄準線。<br>
       <br>
@@ -405,6 +413,16 @@ var FIFTH_ANCHORS = [
   [1, 36.8699, '外 1/5'], [2, 44.4270, '外 2/5'], [3, 53.1301, '外 3/5'],
   [4, 64.1581, '外 4/5']
 ];
+
+/* ══════════ 瞄準線橫移（來源：微信視頻號《斯諾克-粉球中袋：角度瞄準法》）══════════
+   橫移 ＝ 假想球同目標球球心之間嘅橫向距離 ＝ 2R·sinθ。
+   影片封面標示「切角 16.7°、橫移 15.1 mm、四視角（第一人稱／第三人稱／局部俯視／袋口瞄準點）」，
+   本程式算 2 × 26.25 mm × sin16.7° = 15.09 mm ✓ 對得上。
+   實用上就係「平移法」：瞄準線由連心線平行推開呢個距離。
+   以球直徑（52.5 mm）為單位就係 sinθ。（影片封面另有「厚度 1/4–3/8 球」，正好對應佢
+   banner「正45°→反40°」嘅 1−sin45°＝29.3%、1−sin40°＝35.7%，兩者都落在 1/4–3/8 之間。） */
+function shiftMM(deg){ return 2 * R_BALL * 25.4 * Math.sin(deg * Math.PI / 180); }
+function shiftBalls(deg){ return Math.sin(deg * Math.PI / 180); }
 
 /* 檯面均分格線：GRID_COLS × GRID_ROWS = 6 × 4 = 24 格，24 格全部一樣大。
    用途：唔靠感覺，直接數格估距離／位置。
@@ -971,6 +989,8 @@ function updateReadout(s, res, bad){
     Math.round(s.thickness * 100) + '%（' + shotNameApprox(s.cutDeg) + '）';
   document.getElementById('bigFive').textContent = fifthsAt(s.cutDeg).text;
   document.getElementById('bigAim').textContent = aimText(s.cutDeg);
+  document.getElementById('bigShift').textContent =
+    shiftMM(s.cutDeg).toFixed(1) + ' mm（' + shiftBalls(s.cutDeg).toFixed(2) + ' 球）';
   document.getElementById('bigPk').textContent = s.pocket.name + (manualPocket >= 0 ? '（鎖定）' : '');
   document.getElementById('bigTan').textContent = '偏' + s.side + ' 90°';
 
@@ -1131,20 +1151,40 @@ Array.prototype.forEach.call(document.querySelectorAll('.angBtn'), function(btn)
   });
 });
 
+/* 影片情景《斯諾克-粉球中袋：角度瞄準法》：粉球原位 → 下中袋、切角 16.7°（橫移 15.1 mm） */
+document.getElementById('bPink').addEventListener('click', function(){
+  var sp = snookerSpots(), pink = null, i;
+  for (i = 0; i < sp.length; i++){ if (sp[i].name === '粉紅'){ pink = sp[i]; } }
+  if (!pink) return;
+  obj.x = pink.x; obj.y = pink.y;
+  manualPocket = 4;                       // 下中袋
+  setObjBall(5);                          // 粉紅（6 分）
+  var p = placeForAngle(cue, obj, POCKETS[4], 16.7, 60);
+  if (p){ cue.x = p.x; cue.y = p.y; }
+  render();
+  var st = document.getElementById('oStat');
+  st.className = 'status';
+  st.innerHTML = '影片情景：<b>粉球 → 下中袋</b>，白球擺到切角 <b>' + shot.cutDeg.toFixed(1) +
+    '°</b>；瞄準線要由連心線平行移開 <b>' + shiftMM(shot.cutDeg).toFixed(1) + ' mm</b>' +
+    '（影片寫 15.1 mm）。拖球或者按其他角度就會變。';
+});
+
 /* 目標球顏色 */
+var setObjBall = null;      // 由下面嘅 IIFE 指派，方便情景預設同步色板
 (function(){
   var wrap = document.getElementById('swWrap');
+  function select(i){
+    objBall = i;
+    Array.prototype.forEach.call(wrap.children, function(c, k){ c.classList.toggle('on', k === i); });
+    render();
+  }
+  setObjBall = select;
   BALLS.forEach(function(b, i){
     var btn = document.createElement('button');
     btn.className = 'sw' + (i === objBall ? ' on' : '');
     btn.innerHTML = '<i style="background:' + b.c + '"></i>' + b.name +
       ' <span class="num">' + b.v + '</span>';
-    btn.addEventListener('click', function(){
-      objBall = i;
-      Array.prototype.forEach.call(wrap.children, function(c){ c.classList.remove('on'); });
-      btn.classList.add('on');
-      render();
-    });
+    btn.addEventListener('click', function(){ select(i); });
     wrap.appendChild(btn);
   });
 })();
@@ -1359,6 +1399,16 @@ function selftest(){
   for (kk in opts) opts[kk] = keepO[kk];               // 還原
   cue.x = keepCue.x; cue.y = keepCue.y; obj.x = keepObj.x; obj.y = keepObj.y;
   render();
+
+  // 瞄準線橫移（微信影片）＋ 影片情景預設
+  ok('shiftReadout', /mm/.test(document.getElementById('bigShift').textContent),
+     document.getElementById('bigShift').textContent);
+  ok('shift16.7=15.1mm', Math.abs(shiftMM(16.7) - 15.1) < 0.06, shiftMM(16.7).toFixed(2) + ' mm');
+  document.getElementById('bPink').click();            // 影片情景：粉球 → 下中袋
+  ok('pinkPreset', Math.abs(shot.cutDeg - 16.7) < 0.2 && shot.pocket.name === '下中袋' &&
+     Math.abs(shiftMM(shot.cutDeg) - 15.1) < 0.06 && objBall === 5 && manualPocket === 4,
+     '切角 ' + shot.cutDeg.toFixed(1) + '°　' + shot.pocket.name +
+     '　橫移 ' + shiftMM(shot.cutDeg).toFixed(2) + ' mm');
 
   var line = 'SELFTEST ' + out.join(' ') + ' [' + angSeen.join(' ') + '] ' +
     ' canvas=' + Math.round(r.width) + 'x' + Math.round(r.height) + ' S=' + S.toFixed(4) +
