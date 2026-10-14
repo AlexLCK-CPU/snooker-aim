@@ -294,6 +294,7 @@
       <b>參考線（超透明）</b>：檯面均分成 <b>24 格</b>（長邊 6 格 × 短邊 4 格，每格 <b>23.4″ × 17.5″</b>，24 格一樣大）嘅虛線格網，用來數格估距離同位置；中間兩條中心線稍為亮一點（穿過啡／藍／粉／黑原位）。另加 6 個色球原位小圈；兩條路徑中點寫住「x.x 球身」＝實際距離（1 球身 = 一個球直徑）。<br>
       <b>6 個色球</b>（預設收起）：黃(2)／綠(3)／啡(4)／藍(5)／粉紅(6)／黑(7)。撳一下就會擺喺原位（半透明，唔會擋住瞄準線）；檯面預設只剩<b>白球同目標球</b>，睇得清楚啲。<br>
       <b>視角</b>（撳一下循環）：<b>俯視</b>（第三人稱，睇全張枱同角度幾何）→ <b>雙視角</b>（上面第一人稱＋下面俯視）→ <b>第一人稱</b>（由白球後方望，佔滿成個畫面）。<b>兩種視圖都可以直接拖波</b>：俯視拖邊度得邊度；第一人稱就喺個波上面按住拖，個波會跟住你隻手指喺絨布上走（拖嗰陣相機會鎖住，唔會亂飄）。<br>
+      <b>全螢幕</b>：撳「全螢幕」之後只剩畫面 —— <b>用你當時揀嘅視角</b>（俯視／雙視角／第一人稱），其他介面全部收埋；右上角有「✕ 退出全螢幕」，亦可以按 Esc／手機手勢退出。<br>
       <br>
       <b>厚度 = 1 − sin（切角）</b>：切角 30° 就係半球（蓋住目標球 50%）。畫面上白色空心圈嘅<b>瞄準點</b>，距目標球球心 = 半徑 × sin（切角），所以可以直接對照下表。<br>
       90° 切線（可開啟）＝中桿定桿時白球撞後嘅分離方向，用來想做球走位。
@@ -1500,16 +1501,13 @@ document.getElementById('bSwap').addEventListener('click', function(){
   manualPocket = -1;
   render();
 });
-/* ── 全螢幕：好似 YouTube 全螢幕睇片 —— 只剩雙視角，其他介面全部收埋，
-      另外固定一個「退出全螢幕」掣（亦可以按 Esc／系統手勢退出）。 ── */
-var fsPrevView = null;
+/* ── 全螢幕：好似 YouTube 全螢幕睇片 —— 只剩畫面（你當時揀嘅視角：俯視／雙視角／第一人稱），
+      其他介面全部收埋，另外固定一個「退出全螢幕」掣（亦可以按 Esc／系統手勢退出）。 ── */
 function fsOn(){ return document.body.classList.contains('fsMode'); }
 function setFullscreen(on){
   if (on === fsOn()) return;
   if (on){
-    fsPrevView = opts.view;
-    opts.view = 'split';                     // 全螢幕＝雙視角
-    document.body.classList.add('fsMode');
+    document.body.classList.add('fsMode');     // 視角唔改，沿用當時嘅選擇
     var el = document.documentElement;
     try {
       var pf = el.requestFullscreen ? el.requestFullscreen()
@@ -1518,7 +1516,6 @@ function setFullscreen(on){
     } catch (_){}
   } else {
     document.body.classList.remove('fsMode');
-    if (fsPrevView){ opts.view = fsPrevView; fsPrevView = null; }
     try {
       var pe = (document.fullscreenElement && document.exitFullscreen) ? document.exitFullscreen()
              : (document.webkitFullscreenElement && document.webkitExitFullscreen) ? document.webkitExitFullscreen() : null;
@@ -2013,8 +2010,8 @@ function selftest(){
     elFS.webkitRequestFullscreen = function(){};
     document.getElementById('bFull').click();
     var exitEl = document.getElementById('bExitFs');
-    ok('fsModeOn', document.body.classList.contains('fsMode') && opts.view === 'split',
-       'fsMode=' + document.body.classList.contains('fsMode') + '　視角=' + opts.view);
+    ok('fsModeOn', document.body.classList.contains('fsMode') && opts.view === vBefore,
+       'fsMode=' + document.body.classList.contains('fsMode') + '　視角=' + opts.view + '（唔會強制變雙視角）');
     var othersVisible = [].slice.call(cv.parentElement.children).some(function(el){
       return el !== cv && el !== exitEl && getComputedStyle(el).display !== 'none';
     });
@@ -2026,7 +2023,18 @@ function selftest(){
     document.getElementById('bExitFs').click();
     ok('fsExitRestores', !document.body.classList.contains('fsMode') && opts.view === vBefore &&
        getComputedStyle(exitEl).display === 'none',
-       '視角還原為 ' + opts.view + '，退出掣已收起');
+       '視角仍為 ' + opts.view + '，退出掣已收起');
+    /* 全螢幕要沿用當時嘅視角（三個模式都試一次） */
+    var fsModes = [];
+    ['top', 'split', 'fp'].forEach(function(vm){
+      opts.view = vm; resize();
+      document.getElementById('bFull').click();
+      fsModes.push(vm + (opts.view === vm ? '✓' : '✗') + (cv.width / Math.max(1, cv.height)).toFixed(2));
+      document.getElementById('bExitFs').click();
+    });
+    ok('fsKeepsViewMode', fsModes.join(' ').indexOf('✗') < 0 && opts.view === 'fp',
+       fsModes.join('　') + '（✓＝全螢幕後視角不變）');
+    opts.view = vBefore; resize();
     elFS.requestFullscreen = origFS;
     elFS.webkitRequestFullscreen = origWF;
   }
