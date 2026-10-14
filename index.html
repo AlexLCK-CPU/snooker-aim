@@ -146,7 +146,7 @@
   }
   /* ── 手機橫向／矮螢幕：精簡控件，騰出高度俾張枱 ── */
   @media (max-height: 560px){
-    .bar .lbl, #swWrap{display:none}
+    .bar .lbl{display:none}
     .ivBox{display:none}          /* 視線圖最食位，矮螢幕收起；五分點讀數仍然有 */
     .hud{gap:10px;margin-bottom:6px}
     .hudL .v{font-size:26px}
@@ -178,6 +178,19 @@
     .bar{margin-bottom:4px}
     .bar button{padding:3px 7px;font-size:11px;border-radius:6px}
   }
+  /* ── 全螢幕：好似 YouTube 全螢幕睇片 —— 只剩雙視角（＋一個退出掣），其他全部收埋 ── */
+  #bExitFs{display:none}
+  body.fsMode{background:#000;overflow:hidden}
+  body.fsMode .wrap > *{display:none !important}
+  body.fsMode .wrap > canvas#cv{display:block !important}
+  body.fsMode #bExitFs{display:block !important}
+  body.fsMode .wrap{max-width:none;margin:0;padding:0;gap:0}
+  body.fsMode #cv{margin:0 auto}
+  #bExitFs{position:fixed;top:12px;right:12px;z-index:99999;
+    padding:10px 16px;font:600 14px/1.2 system-ui,-apple-system,sans-serif;border-radius:999px;
+    border:1px solid rgba(255,255,255,0.45);background:rgba(0,0,0,0.62);color:#fff;
+    cursor:pointer;-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}
+  #bExitFs:active{background:rgba(255,255,255,0.28)}
 </style>
 </head>
 <body>
@@ -214,9 +227,6 @@
     <button class="angBtn" data-ang="45">45°</button>
     <button class="angBtn" data-ang="60">60°</button>
     <button id="bPink" title="影片情景：粉球 → 下中袋，切角 16.7°（橫移 15.1 mm）">粉球中袋</button>
-    <span class="sp"></span>
-    <span class="lbl">目標球</span>
-    <span id="swWrap"></span>
   </div>
 
   <div class="bar">
@@ -239,6 +249,8 @@
   <canvas id="cv"></canvas>
 
   <div class="status" id="oStat">拖曳白球或目標球，切角會即時顯示。</div>
+
+  <button id="bExitFs" title="退出全螢幕（或按 Esc）">✕ 退出全螢幕</button>
 
   <details class="ref">
     <summary>角度 ↔ 厚度 ↔ 五分點 對照表</summary>
@@ -433,6 +445,20 @@ var FIFTH_ANCHORS = [
    banner「正45°→反40°」嘅 1−sin45°＝29.3%、1−sin40°＝35.7%，兩者都落在 1/4–3/8 之間。） */
 function shiftMM(deg){ return 2 * R_BALL * 25.4 * Math.sin(deg * Math.PI / 180); }
 function shiftBalls(deg){ return Math.sin(deg * Math.PI / 180); }
+
+/* ══════════ 瞄準走廊（兩條線） ══════════
+   由「一條中心線」改成「貼住白球左右兩側嘅兩條平行線」：
+   兩條線都平行於瞄準方向，各距中心線 r（＝球半徑），所以中間走廊闊 2r ＝一個球直徑，
+   即係白球實際上會行過嘅範圍。r 用同一個單位（吋／螢幕 px）就通用。
+   回傳 [[x1,y1,x2,y2], [x1,y1,x2,y2]]（第一條＝右側、第二條＝左側）。 */
+function aimCorridor(ax, ay, bx, by, r){
+  var dx = bx - ax, dy = by - ay, d = Math.hypot(dx, dy) || 1;
+  var nx = -dy / d, ny = dx / d;                  // 垂直於瞄準方向
+  return [
+    [ax + nx * r, ay + ny * r, bx + nx * r, by + ny * r],
+    [ax - nx * r, ay - ny * r, bx - nx * r, by - ny * r]
+  ];
+}
 
 /* ══════════ 第一人稱（透視）相機 ══════════
    由白球後方 FP_BACK 吋、眼高 FP_EYE_H 吋（＝真人落低身瞄波嘅高度）望過去，
@@ -706,6 +732,9 @@ function resize(){
   for (var i = 0; i < wrap.children.length; i++){
     var el = wrap.children[i];
     if (el === cv) continue;
+    var cs3 = getComputedStyle(el);
+    if (cs3.display === 'none') continue;                    // 收起咗（例如全螢幕）唔應該計入
+    if (cs3.position === 'fixed' || cs3.position === 'absolute') continue;  // 浮動元素唔佔排版高度
     var cs = getComputedStyle(el);
     chrome += el.getBoundingClientRect().height +
               (parseFloat(cs.marginTop) || 0) + (parseFloat(cs.marginBottom) || 0);
@@ -735,6 +764,18 @@ function resize(){
   ivEl.height = Math.max(1, Math.round(IV_H * dpr));
   cv.style.width = cssW + 'px';
   cv.style.height = cssH + 'px';
+  // 自我修正：上面嘅 chrome 係加總估算，可能同實際排版有偏差（flex wrap、行高、body margin…）。
+  // 所以實際排一次版，如果文件仍然高過視窗，就按超出量再縮，最多試 3 次。
+  for (var att = 0; att < 3; att++){
+    var over = document.documentElement.scrollHeight - vh;
+    if (over <= 1) break;
+    availH = Math.max(60, availH - over - 1);
+    cssW = fitWidth(availW, availH, LW, LH);
+    cssH = cssW * LH / LW;
+    cv.style.width = cssW + 'px';
+    cv.style.height = cssH + 'px';
+    lastW = cssW;
+  }
   cv.width = Math.max(1, Math.round(cssW * dpr));
   cv.height = Math.max(1, Math.round(cssH * dpr));
   S = cssW / LW;
@@ -881,14 +922,22 @@ function render(){
     line(gx - tx * 4, gy - ty * 4, gx + tx * 16, gy + ty * 16);
   }
 
-  /* ── 瞄準線（白球 → 假想球，50% 半透明，箭頭停在假想球邊緣） ── */
-  var al = Math.hypot(gx - cx, gy - cy) || 1;
-  var uax = (gx - cx) / al, uay = (gy - cy) / al;
-  var tipX = gx - uax * rr, tipY = gy - uay * rr;
+  /* ── 瞄準走廊：貼住白球左右兩側嘅兩條線（中間走廊闊 2R ＝ 白球真正行過嘅範圍） ── */
   var aimCol = bad ? withAlpha(TH.accent, 0.28) : withAlpha(TH.accent, AIM_ALPHA);
-  set(Math.max(1.6, 2.2 * S), aimCol, bad ? [6 * S, 5 * S] : []);
-  line(cx, cy, tipX, tipY);
-  if (!bad) arrowHead(cx, cy, tipX, tipY, aimCol, Math.max(4, 3.2 * S));
+  var corridor = aimCorridor(cx, cy, gx, gy, rr);        // 螢幕座標，r ＝ 球半徑（px）
+  // 走廊底色（好淡）：就算兩條線好幼，都睇得出成條「車道」
+  ctx.beginPath();
+  ctx.moveTo(corridor[0][0], corridor[0][1]);
+  ctx.lineTo(corridor[0][2], corridor[0][3]);
+  ctx.lineTo(corridor[1][2], corridor[1][3]);
+  ctx.lineTo(corridor[1][0], corridor[1][1]);
+  ctx.closePath();
+  ctx.fillStyle = withAlpha(TH.accent, bad ? 0.06 : 0.12);
+  ctx.fill();
+  // 兩條邊線：要幼過半個球半徑，否則會疊成一條
+  set(Math.max(1, Math.min(2.2 * S, rr * 0.5)), aimCol, bad ? [6 * S, 5 * S] : []);
+  line(corridor[0][0], corridor[0][1], corridor[0][2], corridor[0][3]);
+  line(corridor[1][0], corridor[1][1], corridor[1][2], corridor[1][3]);
 
   /* ── 假想球（先鋪底色蓋掉底下的線，再用虛線圈標出） ── */
   if (opts.ghost){
@@ -1151,8 +1200,15 @@ function drawFirstPerson(bandPx, s){
   }
   segW([obj.x, obj.y, 0], [s.pocket.x, s.pocket.y, 0],
        s.feasible ? SNK.mark : TH.danger, Math.max(1, 1.2 * S), [5 * S, 4 * S]);
-  segW([cue.x, cue.y, R_BALL], [s.ghost.x, s.ghost.y, R_BALL],
-       withAlpha(TH.accent, AIM_ALPHA), Math.max(1.4, 1.7 * S), []);
+  /* 瞄準走廊：兩條線（世界座標，貼住白球左右兩側，z ＝ 球心高度）＋ 淡色車道底 */
+  var corFP = aimCorridor(cue.x, cue.y, s.ghost.x, s.ghost.y, R_BALL);
+  polyW([[corFP[0][0], corFP[0][1], R_BALL], [corFP[0][2], corFP[0][3], R_BALL],
+         [corFP[1][2], corFP[1][3], R_BALL], [corFP[1][0], corFP[1][1], R_BALL]],
+        withAlpha(TH.accent, 0.10), null);
+  for (i = 0; i < 2; i++){
+    segW([corFP[i][0], corFP[i][1], R_BALL], [corFP[i][2], corFP[i][3], R_BALL],
+         withAlpha(TH.accent, AIM_ALPHA), Math.max(1, 0.8 * S), []);
+  }
   /* 假想球 ＋ 光柱 */
   var gC = P(s.ghost.x, s.ghost.y, R_BALL), gT = P(s.ghost.x, s.ghost.y, R_BALL + 9);
   var gB = P(s.ghost.x, s.ghost.y, 0);
@@ -1418,15 +1474,16 @@ tog('bTang', 'tangent'); tog('bLines', 'lines'); tog('bStick', 'stick');
 
 /* 視角：俯視 → 雙視角 → 第一人稱（撳一下循環）。標籤顯示現時模式。
    唔同模式畫布長寬比唔同，所以要行 resize()。 */
+var syncViewLabel = null;      // 由下面 IIFE 指派（全螢幕會改 view，要同步掣上嘅標籤）
 (function(){
   var el = document.getElementById('bView');
   var NAME = { top: '俯視', split: '雙視角', fp: '第一人稱' };
   var ORDER = ['top', 'split', 'fp'];
-  function sync(){ el.textContent = '視角：' + NAME[opts.view]; }
-  sync();
+  syncViewLabel = function(){ el.textContent = '視角：' + NAME[opts.view]; };
+  syncViewLabel();
   el.addEventListener('click', function(){
     opts.view = ORDER[(ORDER.indexOf(opts.view) + 1) % ORDER.length];
-    sync();
+    syncViewLabel();
     resize();
   });
 })();
@@ -1443,20 +1500,46 @@ document.getElementById('bSwap').addEventListener('click', function(){
   manualPocket = -1;
   render();
 });
-/* 全螢幕（手機橫向睇大啲） */
-document.getElementById('bFull').addEventListener('click', function(){
-  var el = document.documentElement;
-  var fs = document.fullscreenElement || document.webkitFullscreenElement;
-  if (!fs){
-    if (el.requestFullscreen) el.requestFullscreen();
-    else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+/* ── 全螢幕：好似 YouTube 全螢幕睇片 —— 只剩雙視角，其他介面全部收埋，
+      另外固定一個「退出全螢幕」掣（亦可以按 Esc／系統手勢退出）。 ── */
+var fsPrevView = null;
+function fsOn(){ return document.body.classList.contains('fsMode'); }
+function setFullscreen(on){
+  if (on === fsOn()) return;
+  if (on){
+    fsPrevView = opts.view;
+    opts.view = 'split';                     // 全螢幕＝雙視角
+    document.body.classList.add('fsMode');
+    var el = document.documentElement;
+    try {
+      var pf = el.requestFullscreen ? el.requestFullscreen()
+             : (el.webkitRequestFullscreen ? el.webkitRequestFullscreen() : null);
+      if (pf && pf.catch) pf.catch(function(){});   // iOS 唔支援元素全螢幕 → 照用 CSS 版本
+    } catch (_){}
   } else {
-    if (document.exitFullscreen) document.exitFullscreen();
-    else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+    document.body.classList.remove('fsMode');
+    if (fsPrevView){ opts.view = fsPrevView; fsPrevView = null; }
+    try {
+      var pe = (document.fullscreenElement && document.exitFullscreen) ? document.exitFullscreen()
+             : (document.webkitFullscreenElement && document.webkitExitFullscreen) ? document.webkitExitFullscreen() : null;
+      if (pe && pe.catch) pe.catch(function(){});
+    } catch (_){}
   }
+  if (syncViewLabel) syncViewLabel();
+  resize();
+  setTimeout(resize, 60);                    // 真正入咗全螢幕之後尺寸會再變，補量一次
+}
+document.getElementById('bFull').addEventListener('click', function(){ setFullscreen(true); });
+document.getElementById('bExitFs').addEventListener('click', function(){ setFullscreen(false); });
+document.addEventListener('keydown', function(e){
+  if ((e.key === 'Escape' || e.keyCode === 27) && fsOn()) setFullscreen(false);
 });
 ['fullscreenchange', 'webkitfullscreenchange'].forEach(function(ev){
-  document.addEventListener(ev, function(){ setTimeout(resize, 80); });
+  document.addEventListener(ev, function(){
+    var fs = document.fullscreenElement || document.webkitFullscreenElement;
+    if (!fs && fsOn()) setFullscreen(false);  // 用系統方式退出（Esc／手勢）→ 介面都要還原
+    else setTimeout(resize, 80);
+  });
 });
 /* 手機瀏覽器網址列收放／轉向 → 重新計算尺寸 */
 if (window.visualViewport){
@@ -1521,25 +1604,8 @@ document.getElementById('bPink').addEventListener('click', function(){
     '（影片寫 15.1 mm）。拖球或者按其他角度就會變。';
 });
 
-/* 目標球顏色 */
-var setObjBall = null;      // 由下面嘅 IIFE 指派，方便情景預設同步色板
-(function(){
-  var wrap = document.getElementById('swWrap');
-  function select(i){
-    objBall = i;
-    Array.prototype.forEach.call(wrap.children, function(c, k){ c.classList.toggle('on', k === i); });
-    render();
-  }
-  setObjBall = select;
-  BALLS.forEach(function(b, i){
-    var btn = document.createElement('button');
-    btn.className = 'sw' + (i === objBall ? ' on' : '');
-    btn.innerHTML = '<i style="background:' + b.c + '"></i>' + b.name +
-      ' <span class="num">' + b.v + '</span>';
-    btn.addEventListener('click', function(){ select(i); });
-    wrap.appendChild(btn);
-  });
-})();
+/* 目標球顏色：色板已按用戶要求移除；情景預設（例如「粉球中袋」）仍然會改 objBall */
+function setObjBall(i){ objBall = i; render(); }
 
 window.addEventListener('resize', resize);
 if (window.ResizeObserver){
@@ -1695,6 +1761,20 @@ function selftest(){
   var docH = document.documentElement.scrollHeight;
   ok('wholeTableFits', docH <= window.innerHeight + 2 && cv.getBoundingClientRect().bottom <= window.innerHeight + 1,
      'doc=' + docH + ' vh=' + window.innerHeight + ' canvasBottom=' + Math.round(cv.getBoundingClientRect().bottom));
+  {   // 診斷：逐個量畫布以外嘅元素（邊個食咗高度）
+    var _parts = [];
+    for (var _ci = 0; _ci < cv.parentElement.children.length; _ci++){
+      var _e = cv.parentElement.children[_ci];
+      if (_e === cv) { _parts.push('cv:' + Math.round(_e.getBoundingClientRect().height)); continue; }
+      var _cs = getComputedStyle(_e);
+      _parts.push((_e.id || _e.className || _e.tagName) + ':' +
+        Math.round(_e.getBoundingClientRect().height) +
+        (parseFloat(_cs.marginTop) || parseFloat(_cs.marginBottom) ?
+         '(m' + (parseFloat(_cs.marginTop) || 0) + '/' + (parseFloat(_cs.marginBottom) || 0) + ')' : '') +
+        (_cs.display === 'none' ? '[none]' : ''));
+    }
+    out.push('CHROME ' + _parts.join(' '));
+  }
 
   /* 窄螢幕：次要讀數收起 → 畫布要即刻變大（resize() 會重新量 chrome 高度） */
   if (window.innerWidth <= 700){
@@ -1818,6 +1898,68 @@ function selftest(){
   cue.x = keepCue.x; cue.y = keepCue.y; obj.x = keepObj.x; obj.y = keepObj.y;
   render();
 
+  /* 瞄準走廊：確認畫面上真係「兩條線 ＋ 中間淡色車道」。
+     做法：算出兩條線嘅位置，直接喺線上面同車道正中取樣比較藍度。 */
+  {
+    var keepView3 = opts.view;
+    opts.view = 'top'; resize();
+    var cor2 = aimCorridor(X(cue.x), Y(cue.y), X(shot.ghost.x), Y(shot.ghost.y), R_BALL * S);
+    function blueAt(x, y){
+      var ix = Math.round(x * dpr), iy = Math.round(y * dpr);
+      if (ix < 0 || iy < 0 || ix >= cv.width || iy >= cv.height) return null;
+      var d2 = ctx.getImageData(ix, iy, 1, 1).data;
+      return d2[2] - d2[0];                       // 藍色程度（藍 − 紅）
+    }
+    function rgbAt(x, y){
+      var ix = Math.round(x * dpr), iy = Math.round(y * dpr);
+      if (ix < 0 || iy < 0 || ix >= cv.width || iy >= cv.height) return 'out';
+      var d3 = ctx.getImageData(ix, iy, 1, 1).data;
+      return d3[0] + ',' + d3[1] + ',' + d3[2];
+    }
+    // 每條線沿線取 10 點，用鄰域最大藍度（避開抗鋸齒同虛線空隙）。
+    // 鄰域半徑要細過半個走廊闊，否則會「摸到」對面條線（小畫布尤其明顯）。
+    var pat = Math.max(0, Math.min(2, Math.round(R_BALL * S * 0.3)));
+    function blueMax(x, y){
+      var ix = Math.round(x * dpr), iy = Math.round(y * dpr), mx = -999, ox, oy;
+      for (ox = -pat; ox <= pat; ox++) for (oy = -pat; oy <= pat; oy++){
+        var px = ix + ox, py = iy + oy;
+        if (px < 0 || py < 0 || px >= cv.width || py >= cv.height) continue;
+        var d4 = ctx.getImageData(px, py, 1, 1).data;
+        if (d4[2] - d4[0] > mx) mx = d4[2] - d4[0];
+      }
+      return mx;
+    }
+    var lineHit = 0, lineTot = 0, midMax = -999, q2;
+    for (q2 = 0.25; q2 <= 0.71; q2 += 0.05){
+      var lx = cor2[0][0] + (cor2[0][2] - cor2[0][0]) * q2, ly = cor2[0][1] + (cor2[0][3] - cor2[0][1]) * q2;
+      var rx = cor2[1][0] + (cor2[1][2] - cor2[1][0]) * q2, ry = cor2[1][1] + (cor2[1][3] - cor2[1][1]) * q2;
+      var b1 = blueMax(lx, ly), b2 = blueMax(rx, ry), bm = blueMax((lx + rx) / 2, (ly + ry) / 2);
+      lineTot += 2;
+      if (b1 > bm + 25) lineHit++;
+      if (b2 > bm + 25) lineHit++;
+      if (bm > midMax) midMax = bm;
+    }
+    var gap = Math.hypot(cor2[0][0] - cor2[1][0], cor2[0][1] - cor2[1][1]);
+    if (S >= 3.5){
+      ok('aimCorridor2Lines', lineTot >= 16 && lineHit >= lineTot * 0.7 && Math.abs(gap - 2 * R_BALL * S) < 0.01,
+         '兩條線相距 ' + gap.toFixed(1) + 'px（一個球直徑 = ' + (2 * R_BALL * S).toFixed(1) + 'px）　' +
+         '線上有藍色 ' + lineHit + '/' + lineTot + ' 點，車道中間最藍 ' + midMax);
+    } else {
+      // 畫布太細（一個球直徑得幾 px）：兩條線必然糊埋，像素層面分唔開。
+      // 改為驗證「車道真係有畫到」＋「走廊闊 = 2R」（幾何另有 geo.test.js 驗）。
+      var anyBlue = false, q4;
+      for (q4 = 0.25; q4 <= 0.71; q4 += 0.05){
+        var ax2 = cor2[0][0] + (cor2[0][2] - cor2[0][0]) * q4, ay2 = cor2[0][1] + (cor2[0][3] - cor2[0][1]) * q4;
+        var bx3 = cor2[1][0] + (cor2[1][2] - cor2[1][0]) * q4, by3 = cor2[1][1] + (cor2[1][3] - cor2[1][1]) * q4;
+        if (blueMax((ax2 + bx3) / 2, (ay2 + by3) / 2) > 75){ anyBlue = true; break; }
+      }
+      ok('aimCorridor2Lines', anyBlue && Math.abs(gap - 2 * R_BALL * S) < 0.01,
+         '畫布細（一個球直徑得 ' + (2 * R_BALL * S).toFixed(1) + 'px）：兩條線糊埋屬正常，' +
+         '驗證車道畫到 ＋ 走廊闊 = 2R（' + gap.toFixed(1) + 'px）');
+    }
+    opts.view = keepView3; resize();
+  }
+
   /* ── 視角模式（喺還原之後量：上面像素測試期間所有選項都暫時關咗）── */
   var vBtn = document.getElementById('bView');
   var VNAME = { top: '俯視', split: '雙視角', fp: '第一人稱' };
@@ -1862,6 +2004,32 @@ function selftest(){
   ok('fpCanvasBigger', hByMode.fp >= hByMode.top - 2,
      '畫布高：第一人稱 ' + Math.round(hByMode.fp) + 'px（唔會被長寬比壓扁；手機窄螢幕時會明顯高過雙視角）' +
      '／俯視 ' + Math.round(hByMode.top) + 'px');
+
+  /* 全螢幕：只剩雙視角（其他介面全部收起）＋ 一個退出掣；退出後要完整還原 */
+  {
+    var vBefore = opts.view;
+    var elFS = document.documentElement, origFS = elFS.requestFullscreen, origWF = elFS.webkitRequestFullscreen;
+    elFS.requestFullscreen = function(){ return Promise.resolve(); };   // 自測唔想真係跳去全螢幕
+    elFS.webkitRequestFullscreen = function(){};
+    document.getElementById('bFull').click();
+    var exitEl = document.getElementById('bExitFs');
+    ok('fsModeOn', document.body.classList.contains('fsMode') && opts.view === 'split',
+       'fsMode=' + document.body.classList.contains('fsMode') + '　視角=' + opts.view);
+    var othersVisible = [].slice.call(cv.parentElement.children).some(function(el){
+      return el !== cv && el !== exitEl && getComputedStyle(el).display !== 'none';
+    });
+    ok('fsOnlyCanvas', !othersVisible && getComputedStyle(exitEl).display !== 'none',
+       '除畫布同退出掣之外，其餘介面全部收起；退出掣 display=' + getComputedStyle(exitEl).display);
+    var rc = cv.getBoundingClientRect();
+    ok('fsCanvasFills', rc.height >= window.innerHeight - 24 || rc.width >= cv.parentElement.clientWidth - 24,
+       '畫布 ' + Math.round(rc.width) + 'x' + Math.round(rc.height) + '　視窗高 ' + window.innerHeight);
+    document.getElementById('bExitFs').click();
+    ok('fsExitRestores', !document.body.classList.contains('fsMode') && opts.view === vBefore &&
+       getComputedStyle(exitEl).display === 'none',
+       '視角還原為 ' + opts.view + '，退出掣已收起');
+    elFS.requestFullscreen = origFS;
+    elFS.webkitRequestFullscreen = origWF;
+  }
 
   // 瞄準線橫移（微信影片）＋ 影片情景預設
   ok('shiftReadout', /mm/.test(document.getElementById('bigShift').textContent),
